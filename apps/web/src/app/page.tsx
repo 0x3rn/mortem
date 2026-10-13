@@ -238,7 +238,10 @@ export default function Home() {
             aria-label="Primary"
             className="hidden items-center gap-6 text-sm text-muted-foreground md:flex"
           >
-            <a href="#specimen" className="transition-colors hover:text-foreground">
+            <a
+              href="#specimen"
+              className="transition-colors hover:text-foreground"
+            >
               Sample Report
             </a>
             <a
@@ -250,10 +253,16 @@ export default function Home() {
             <a href="#how" className="transition-colors hover:text-foreground">
               How It Works
             </a>
-            <a href="#agencies" className="transition-colors hover:text-foreground">
+            <a
+              href="#agencies"
+              className="transition-colors hover:text-foreground"
+            >
               For Agencies
             </a>
-            <a href="#pricing" className="transition-colors hover:text-foreground">
+            <a
+              href="#pricing"
+              className="transition-colors hover:text-foreground"
+            >
               Pricing
             </a>
           </nav>
@@ -508,10 +517,7 @@ export default function Home() {
       </section>
 
       {/* Why Mortem / Differentiation */}
-      <section
-        id="why-mortem"
-        className="border-t border-border bg-muted/40"
-      >
+      <section id="why-mortem" className="border-t border-border bg-muted/40">
         <div className="mx-auto max-w-6xl px-6 py-24">
           <p className="text-xs font-semibold tracking-widest text-primary uppercase">
             Why Mortem
@@ -726,4 +732,3 @@ export default function Home() {
     </div>
   );
 }
-

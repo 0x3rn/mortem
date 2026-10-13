@@ -1,27 +1,11 @@
 "use client";
 
+import { normalizeUrlInput } from "@mortem/core";
 import { useState } from "react";
 
 interface ExamineFormProps {
   id?: string;
   buttonLabel?: string;
-}
-
-function normalizeUrlInput(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  const withProtocol = /^https?:\/\//i.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
-  try {
-    const parsed = new URL(withProtocol);
-    if (!parsed.hostname || !parsed.hostname.includes(".")) {
-      return null;
-    }
-    return parsed.toString();
-  } catch {
-    return null;
-  }
 }
 
 export function ExamineForm({
@@ -51,7 +35,10 @@ export function ExamineForm({
         onSubmit={handleSubmit}
         noValidate
       >
-        <label htmlFor={id ? `${id}-input` : "examine-url-input"} className="sr-only">
+        <label
+          htmlFor={id ? `${id}-input` : "examine-url-input"}
+          className="sr-only"
+        >
           Website URL to examine
         </label>
         <input
@@ -85,13 +72,14 @@ export function ExamineForm({
           role="status"
           className="mt-3 rounded-md border border-border bg-card/80 px-4 py-3 text-left text-xs text-muted-foreground"
         >
-          <span className="font-semibold text-foreground">Target normalized:</span>{" "}
-          <code className="text-foreground">{submittedUrl}</code> — Intake pipeline (
-          <code className="text-foreground">POST /api/scans</code>) is being wired in
-          Milestone 01.
+          <span className="font-semibold text-foreground">
+            Target normalized:
+          </span>{" "}
+          <code className="text-foreground">{submittedUrl}</code> — Intake
+          pipeline (<code className="text-foreground">POST /api/scans</code>) is
+          being wired in Milestone 01.
         </div>
       ) : null}
     </div>
   );
 }
-

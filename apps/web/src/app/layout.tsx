@@ -1,5 +1,20 @@
 import type { Metadata } from "next";
+import { Manrope, Sora } from "next/font/google";
 import "./styles.css";
+
+const sora = Sora({
+  subsets: ["latin"],
+  weight: ["400", "600", "700", "800"],
+  variable: "--font-sora",
+  display: "swap",
+});
+
+const manrope = Manrope({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-manrope",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Mortem",
@@ -11,19 +26,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Manrope:wght@400;500;600;700&display=swap"
-        />
-      </head>
+    <html lang="en" className={`${sora.variable} ${manrope.variable}`}>
       <body>{children}</body>
     </html>
   );

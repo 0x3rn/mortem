@@ -2,27 +2,31 @@
   "name": "mortem",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "workers/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "@tailwindcss/postcss": "^4.3.3",
-    "next": "16.4.0",
-    "postcss": "^8.5.30",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
-    "tailwindcss": "^4.3.3",
-    "tw-animate-css": "^1.4.0"
+    "dev": "npm --workspace @mortem/web run dev",
+    "build": "npm --workspaces --if-present run build",
+    "start": "npm --workspace @mortem/web run start",
+    "typecheck": "npm --workspaces --if-present run typecheck",
+    "lint": "npm --workspaces --if-present run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,mjs,json,md,yml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,mjs,json,md,yml}\"",
+    "test": "npm --workspaces --if-present run test",
+    "test:e2e": "npm --workspace @mortem/web run test:e2e"
   },
   "devDependencies": {
+    "@playwright/test": "^1.51.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
-    "typescript": "^5"
+    "prettier": "^3.5.3",
+    "typescript": "^5",
+    "vitest": "^3.0.9"
   }
 }

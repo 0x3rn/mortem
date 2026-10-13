@@ -1,0 +1,12 @@
+node_modules
+.next
+out
+build
+dist
+coverage
+playwright-report
+test-results
+package-lock.json
+next-env.d.ts
+AGENTS.md
+apps/web/AGENTS.md
