@@ -1,8 +1,15 @@
+import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 import type { NextConfig } from "next";
 
+if (process.env.NODE_ENV === "development") {
+  initOpenNextCloudflareForDev({
+    persist: {
+      path: "../../.wrangler/state/v3",
+    },
+  });
+}
+
 const nextConfig: NextConfig = {
-  cacheComponents: true,
-  partialPrefetching: true,
   transpilePackages: ["@mortem/core"],
 };
 

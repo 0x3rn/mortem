@@ -20,7 +20,8 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
-      "@mortem/core": ["../../packages/core/src/index.ts"]
+      "@mortem/core": ["../../packages/core/src/index.ts"],
+      "@mortem/scan-worker": ["../../workers/scan/src/index.ts"]
     }
   },
   "include": [

@@ -5,12 +5,19 @@
   "type": "module",
   "main": "./src/index.ts",
   "scripts": {
+    "dev": "wrangler dev --persist-to ../../.wrangler/state",
+    "deploy:staging": "wrangler deploy --env staging",
+    "cf-typegen": "wrangler types --env-interface ScanWorkerCloudflareEnv cloudflare-env.d.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
     "build": "tsc --noEmit"
   },
   "dependencies": {
+    "@cloudflare/playwright": "^1.3.6",
     "@mortem/core": "*"
+  },
+  "devDependencies": {
+    "wrangler": "^4.150.0"
   }
 }

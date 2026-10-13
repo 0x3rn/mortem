@@ -1,5 +1,7 @@
 node_modules
 .next
+.open-next
+.wrangler
 out
 build
 dist
@@ -8,5 +10,6 @@ playwright-report
 test-results
 package-lock.json
 next-env.d.ts
+cloudflare-env.d.ts
 AGENTS.md
 apps/web/AGENTS.md

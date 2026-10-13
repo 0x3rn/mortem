@@ -9,8 +9,13 @@
   ],
   "scripts": {
     "dev": "npm --workspace @mortem/web run dev",
+    "dev:scan": "wrangler dev --config workers/scan/wrangler.jsonc --persist-to .wrangler/state",
     "build": "npm --workspaces --if-present run build",
+    "build:cf": "npm --workspace @mortem/web run build:cf",
     "start": "npm --workspace @mortem/web run start",
+    "cf-typegen": "npm --workspaces --if-present run cf-typegen",
+    "d1:migrate:local": "wrangler d1 migrations apply mortem-db --local --persist-to .wrangler/state --config workers/scan/wrangler.jsonc",
+    "d1:migrate:staging": "wrangler d1 migrations apply mortem-db --remote --env staging --config workers/scan/wrangler.jsonc",
     "typecheck": "npm --workspaces --if-present run typecheck",
     "lint": "npm --workspaces --if-present run lint",
     "format": "prettier --write \"**/*.{ts,tsx,mjs,json,md,yml}\"",
@@ -27,6 +32,7 @@
     "eslint-config-next": "16.4.0",
     "prettier": "^3.5.3",
     "typescript": "^5",
-    "vitest": "^3.0.9"
+    "vitest": "^3.0.9",
+    "wrangler": "^4.150.0"
   }
 }

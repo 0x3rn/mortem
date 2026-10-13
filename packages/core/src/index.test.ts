@@ -3,10 +3,14 @@ import {
   CATEGORY_WEIGHTS,
   DIAGNOSTIC_CATEGORIES,
   FINDING_SEVERITIES,
+  PlatformBindingError,
   READ_ONLY_SCAN_POLICY,
   SCAN_STAGES,
+  buildSmokeArtifactKey,
   isAllowedScanMethod,
   normalizeUrlInput,
+  requireScanWorkerBindings,
+  requireWebBindings,
 } from "./index";
 
 describe("@mortem/core domain contracts", () => {
@@ -63,5 +67,39 @@ describe("@mortem/core domain contracts", () => {
     expect(normalizeUrlInput("https://user:pass@example.com")).toBeNull();
     expect(normalizeUrlInput("localhost")).toBeNull();
     expect(normalizeUrlInput("invalid..domain.")).toBeNull();
+  });
+
+  it("fails closed when Cloudflare bindings are missing on mortem-web or mortem-scan", () => {
+    expect(() => requireWebBindings({})).toThrowError(PlatformBindingError);
+    try {
+      requireWebBindings({});
+    } catch (err) {
+      expect(err).toBeInstanceOf(PlatformBindingError);
+      expect((err as PlatformBindingError).code).toBe("MISSING_BINDING");
+      expect((err as PlatformBindingError).bindingName).toBe("DB");
+    }
+
+    const fakeDb = {
+      prepare: () => ({
+        bind: () => ({
+          run: async () => ({ success: true }),
+          first: async () => null,
+        }),
+      }),
+    };
+    const fakeR2 = { put: async () => null, head: async () => null };
+
+    expect(() =>
+      requireScanWorkerBindings(
+        { DB: fakeDb, EVIDENCE: fakeR2 },
+        { requireBrowser: true },
+      ),
+    ).toThrowError(/BROWSER/);
+  });
+
+  it("formats R2 smoke artifact keys under scans/smoke-{id}/...", () => {
+    expect(buildSmokeArtifactKey("abc_123")).toBe(
+      "scans/smoke-abc_123/pages/example-com/screenshot.png",
+    );
   });
 });

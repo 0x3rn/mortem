@@ -8,7 +8,7 @@ on:
 
 jobs:
   verify:
-    name: Typecheck, Lint, Test & Build
+    name: Typecheck, Lint, D1 Local Migrate, Test & Build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -23,6 +23,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate Cloudflare binding types
+        run: npm run cf-typegen
+
+      - name: Apply D1 migrations locally
+        run: npm run d1:migrate:local
+
       - name: Check formatting
         run: npm run format:check
 
@@ -35,8 +41,41 @@ jobs:
       - name: Run unit and integration tests
         run: npm test
 
-      - name: Build all workspaces
+      - name: Build Next.js and scan worker workspaces
         run: npm run build
+
+      - name: Build OpenNext Cloudflare bundle
+        run: npm run build:cf
 
       - name: Run Playwright E2E smoke tests
         run: npm run test:e2e
+
+  deploy-staging:
+    name: Deploy mortem-web & mortem-scan to Cloudflare Staging
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ENABLE_CLOUDFLARE_DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply D1 migrations to staging
+        run: npm run d1:migrate:staging
+
+      - name: Deploy mortem-scan Worker to staging
+        run: npm --workspace @mortem/scan-worker run deploy:staging
+
+      - name: Build & deploy mortem-web OpenNext Worker to staging
+        run: npm --workspace @mortem/web run deploy:staging

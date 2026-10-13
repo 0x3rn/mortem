@@ -1,10 +1,144 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "mortem-scan-worker",
+  "name": "mortem-scan",
   "main": "src/index.ts",
   "compatibility_date": "2026-04-01",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "observability": {
     "enabled": true
+  },
+  "vars": {
+    "ENVIRONMENT": "development"
+  },
+  "browser": {
+    "binding": "BROWSER"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mortem-db",
+      "database_id": "00000000-0000-4000-8000-000000000001",
+      "migrations_dir": "../../packages/core/migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "EVIDENCE",
+      "bucket_name": "mortem-evidence"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "SCAN_QUEUE",
+        "queue": "mortem-scans"
+      },
+      {
+        "binding": "SCAN_DLQ",
+        "queue": "mortem-scans-dlq"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "mortem-scans",
+        "max_batch_size": 5,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "dead_letter_queue": "mortem-scans-dlq"
+      }
+    ]
+  },
+  "triggers": {
+    "crons": ["0 */6 * * *"]
+  },
+  "env": {
+    "staging": {
+      "name": "mortem-scan-staging",
+      "vars": {
+        "ENVIRONMENT": "staging"
+      },
+      "browser": {
+        "binding": "BROWSER"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "mortem-db-staging",
+          "database_id": "00000000-0000-4000-8000-000000000002",
+          "migrations_dir": "../../packages/core/migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "EVIDENCE",
+          "bucket_name": "mortem-evidence-staging"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "SCAN_QUEUE",
+            "queue": "mortem-scans-staging"
+          },
+          {
+            "binding": "SCAN_DLQ",
+            "queue": "mortem-scans-dlq-staging"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "mortem-scans-staging",
+            "max_batch_size": 5,
+            "max_batch_timeout": 5,
+            "max_retries": 3,
+            "dead_letter_queue": "mortem-scans-dlq-staging"
+          }
+        ]
+      }
+    },
+    "production": {
+      "name": "mortem-scan",
+      "vars": {
+        "ENVIRONMENT": "production"
+      },
+      "browser": {
+        "binding": "BROWSER"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "mortem-db",
+          "database_id": "00000000-0000-4000-8000-000000000001",
+          "migrations_dir": "../../packages/core/migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "EVIDENCE",
+          "bucket_name": "mortem-evidence"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "SCAN_QUEUE",
+            "queue": "mortem-scans"
+          },
+          {
+            "binding": "SCAN_DLQ",
+            "queue": "mortem-scans-dlq"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "mortem-scans",
+            "max_batch_size": 5,
+            "max_batch_timeout": 5,
+            "max_retries": 3,
+            "dead_letter_queue": "mortem-scans-dlq"
+          }
+        ]
+      }
+    }
   }
 }

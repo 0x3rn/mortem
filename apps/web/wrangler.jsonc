@@ -1,0 +1,127 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "mortem-web",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-04-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "mortem-web"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "ENVIRONMENT": "development"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mortem-db",
+      "database_id": "00000000-0000-4000-8000-000000000001",
+      "migrations_dir": "../../packages/core/migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "EVIDENCE",
+      "bucket_name": "mortem-evidence"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "SCAN_QUEUE",
+        "queue": "mortem-scans"
+      },
+      {
+        "binding": "SCAN_DLQ",
+        "queue": "mortem-scans-dlq"
+      }
+    ]
+  },
+  "env": {
+    "staging": {
+      "name": "mortem-web-staging",
+      "vars": {
+        "ENVIRONMENT": "staging"
+      },
+      "services": [
+        {
+          "binding": "WORKER_SELF_REFERENCE",
+          "service": "mortem-web-staging"
+        }
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "mortem-db-staging",
+          "database_id": "00000000-0000-4000-8000-000000000002",
+          "migrations_dir": "../../packages/core/migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "EVIDENCE",
+          "bucket_name": "mortem-evidence-staging"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "SCAN_QUEUE",
+            "queue": "mortem-scans-staging"
+          },
+          {
+            "binding": "SCAN_DLQ",
+            "queue": "mortem-scans-dlq-staging"
+          }
+        ]
+      }
+    },
+    "production": {
+      "name": "mortem-web",
+      "vars": {
+        "ENVIRONMENT": "production"
+      },
+      "services": [
+        {
+          "binding": "WORKER_SELF_REFERENCE",
+          "service": "mortem-web"
+        }
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "mortem-db",
+          "database_id": "00000000-0000-4000-8000-000000000001",
+          "migrations_dir": "../../packages/core/migrations"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "EVIDENCE",
+          "bucket_name": "mortem-evidence"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "SCAN_QUEUE",
+            "queue": "mortem-scans"
+          },
+          {
+            "binding": "SCAN_DLQ",
+            "queue": "mortem-scans-dlq"
+          }
+        ]
+      }
+    }
+  }
+}
