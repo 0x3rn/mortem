@@ -88,6 +88,8 @@ export interface ViewportCaptureEvidence {
   fullPageScreenshot: Uint8Array;
   screenshotContentType: "image/png" | "image/webp";
   networkIdleTimedOut: boolean;
+  htmlTruncated?: boolean;
+  browserMs?: number;
   botChallenge: BotChallengeDetectionResult;
   captureStatus: "captured" | "partial" | "blocked";
 }
@@ -103,6 +105,8 @@ export interface DualViewportPageCaptureResult {
   failureReason: string | null;
   redirectChain: RedirectHop[];
   loadTimings: PageLoadTimingsJson;
+  browserMs?: number;
+  htmlTruncated?: boolean;
   desktop: ViewportCaptureEvidence;
   mobile: ViewportCaptureEvidence;
 }
@@ -209,6 +213,7 @@ export interface CapturePageAcrossViewportsOptions {
   browserLauncher: BrowserLauncherFn;
   navigationTimeoutMs?: number;
   networkIdleTimeoutMs?: number;
+  maxBytesPerPage?: number;
   runPreflight?: boolean;
   dohResolver?: DohResolverFn;
   fetchFn?: typeof fetch;
@@ -546,8 +551,11 @@ export async function captureSingleViewportInIsolatedContext(params: {
   preflightRedirectChain?: RedirectHop[];
   navigationTimeoutMs: number;
   networkIdleTimeoutMs: number;
+  maxBytesPerPage?: number;
   now: () => number;
 }): Promise<ViewportCaptureEvidence> {
+  const viewportStartMs = params.now();
+  const maxBytesPerPage = params.maxBytesPerPage ?? 10 * 1024 * 1024;
   const profile = BROWSER_VIEWPORT_PROFILES[params.viewportName];
   const context = await params.browser.newContext({
     viewport: profile.viewport,
@@ -705,7 +713,17 @@ export async function captureSingleViewportInIsolatedContext(params: {
       .evaluate<PageLoadTimingsJson>(COLLECT_TIMINGS_EVAL_SCRIPT)
       .catch((): PageLoadTimingsJson => ({}));
 
-    const renderedHtml = await page.content();
+    const rawRenderedHtml = await page.content();
+    const rawHtmlBytes = new TextEncoder().encode(rawRenderedHtml);
+    let renderedHtml = rawRenderedHtml;
+    let htmlTruncated = false;
+    if (rawHtmlBytes.byteLength > maxBytesPerPage) {
+      htmlTruncated = true;
+      renderedHtml = `${new TextDecoder("utf-8", { fatal: false }).decode(
+        rawHtmlBytes.subarray(0, maxBytesPerPage),
+      )}\n<!-- [MORTEM_TRUNCATED: HTML exceeded maxBytesPerPage budget] -->`;
+    }
+
     const title = (await page.title().catch(() => "")) || finalUrl;
     const statusCode = response ? response.status() : null;
     const responseHeaders = response ? { ...response.headers() } : {};
@@ -729,9 +747,11 @@ export async function captureSingleViewportInIsolatedContext(params: {
     const captureStatus: ViewportCaptureEvidence["captureStatus"] =
       botChallenge.blocked
         ? "blocked"
-        : networkIdleTimedOut
+        : networkIdleTimedOut || htmlTruncated
           ? "partial"
           : "captured";
+
+    const browserMs = Math.max(1, params.now() - viewportStartMs);
 
     return {
       viewport: params.viewportName,
@@ -757,6 +777,8 @@ export async function captureSingleViewportInIsolatedContext(params: {
       fullPageScreenshot: toUint8Array(fullPageBuffer),
       screenshotContentType: "image/png",
       networkIdleTimedOut,
+      htmlTruncated,
+      browserMs,
       botChallenge,
       captureStatus,
     };
@@ -780,6 +802,7 @@ export async function capturePageAcrossViewports(
   const now = options.now ?? (() => Date.now());
   const navigationTimeoutMs = options.navigationTimeoutMs ?? 20_000;
   const networkIdleTimeoutMs = options.networkIdleTimeoutMs ?? 4_000;
+  const maxBytesPerPage = options.maxBytesPerPage ?? 10 * 1024 * 1024;
 
   // 1. Validate URL against SSRF guard (and run DoH + redirect preflight when enabled)
   const initialValidated = validateAndNormalizeIntakeUrl(options.targetUrl);
@@ -808,6 +831,7 @@ export async function capturePageAcrossViewports(
       preflightRedirectChain,
       navigationTimeoutMs,
       networkIdleTimeoutMs,
+      maxBytesPerPage,
       now,
     });
 
@@ -818,11 +842,15 @@ export async function capturePageAcrossViewports(
       preflightRedirectChain,
       navigationTimeoutMs,
       networkIdleTimeoutMs,
+      maxBytesPerPage,
       now,
     });
 
     const isBlocked =
       desktop.captureStatus === "blocked" || mobile.captureStatus === "blocked";
+    const htmlTruncated = Boolean(
+      desktop.htmlTruncated || mobile.htmlTruncated,
+    );
     const isPartial =
       !isBlocked &&
       (desktop.captureStatus === "partial" ||
@@ -839,20 +867,26 @@ export async function capturePageAcrossViewports(
 
     const failureClass: ScanFailureClass | null = isBlocked
       ? "upstream_blocked"
-      : null;
+      : htmlTruncated
+        ? "budget_exceeded"
+        : null;
 
     const failureReason: string | null = isBlocked
       ? desktop.botChallenge.reason ||
         mobile.botChallenge.reason ||
         "Target page returned a WAF or bot challenge screen."
-      : isPartial
-        ? "Page did not reach network idle within timeout; captured at timeout mark as partial."
-        : null;
+      : htmlTruncated
+        ? `Rendered HTML exceeded maxBytesPerPage budget (${maxBytesPerPage} bytes) and was truncated.`
+        : isPartial
+          ? "Page did not reach network idle within timeout; captured at timeout mark as partial."
+          : null;
 
     const redirectChain =
       desktop.redirectChain.length > 0
         ? desktop.redirectChain
         : mobile.redirectChain;
+
+    const browserMs = (desktop.browserMs ?? 1) + (mobile.browserMs ?? 1);
 
     return {
       requestedUrl: options.targetUrl,
@@ -865,6 +899,8 @@ export async function capturePageAcrossViewports(
       failureReason,
       redirectChain,
       loadTimings: desktop.loadTimings,
+      browserMs,
+      htmlTruncated,
       desktop,
       mobile,
     };

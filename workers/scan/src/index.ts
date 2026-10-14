@@ -1,4 +1,5 @@
 import {
+  CrawlBudgetEnforcer,
   DIAGNOSTIC_CATEGORIES,
   PlatformBindingError,
   READ_ONLY_SCAN_POLICY,
@@ -6,8 +7,11 @@ import {
   advanceScanStageInD1,
   buildSmokeArtifactKey,
   capturePageAcrossViewports,
+  classifyScanErrorForRetry,
   computeRetryBackoffSeconds,
+  createBrowserSessionPool,
   discoverSitePages,
+  fetchWithAbortTimeout,
   handleDeadLetterScanMessageInD1,
   isAllowedScanMethod,
   normalizeUrlInput,
@@ -15,14 +19,14 @@ import {
   persistPageCaptureEvidenceToR2AndD1,
   recordCapturedPageInD1,
   requireScanWorkerBindings,
+  resolveScanBudgets,
+  updateScanUsageInD1,
   type BrowserBindingLike,
   type BrowserLauncherFn,
   type MortemScanBindings,
   type PageTemplateType,
   type PlaywrightBrowserLike,
-  type ScanBudgetsJson,
   type ScanFailureClass,
-  type ScanOptionsJson,
   type ScanPipelineQueueMessage,
   type ScanStage,
   type ScanStageHandlerMap,
@@ -405,29 +409,26 @@ const worker = {
                       budgets_json: string;
                     }>();
 
-                  let requestedMaxPages: number | undefined;
-                  try {
-                    const parsedOptions = scanConfigRow?.options_json
-                      ? (JSON.parse(
-                          scanConfigRow.options_json,
-                        ) as ScanOptionsJson)
-                      : {};
-                    const parsedBudgets = scanConfigRow?.budgets_json
-                      ? (JSON.parse(
-                          scanConfigRow.budgets_json,
-                        ) as ScanBudgetsJson)
-                      : {};
-                    requestedMaxPages =
-                      parsedOptions.maxPages ?? parsedBudgets.maxPages;
-                  } catch {
-                    // Use plan default cap
-                  }
+                  const budgets = resolveScanBudgets({
+                    plan: workspaceRow?.plan ?? "single",
+                    budgetsJson: scanConfigRow?.budgets_json,
+                    optionsJson: scanConfigRow?.options_json,
+                  });
+
+                  const baseDiscoveryFetch = options.discoveryFetch ?? fetch;
+                  const boundedDiscoveryFetch: typeof fetch = (input, init) =>
+                    fetchWithAbortTimeout(
+                      input as string | URL,
+                      init,
+                      budgets.perFetchTimeoutMs,
+                      baseDiscoveryFetch,
+                    );
 
                   const discovery = await discoverSitePages({
                     targetUrl: ctx.targetUrl,
                     plan: workspaceRow?.plan ?? "single",
-                    maxPages: requestedMaxPages,
-                    fetchFn: options.discoveryFetch ?? fetch,
+                    maxPages: budgets.maxPages,
+                    fetchFn: boundedDiscoveryFetch,
                   });
 
                   if (
@@ -451,6 +452,15 @@ const worker = {
                     d1: ctx.d1,
                     scanId: ctx.scanId,
                     discovery,
+                    nowMs: ctx.nowMs,
+                  });
+
+                  await updateScanUsageInD1({
+                    d1: ctx.d1,
+                    scanId: ctx.scanId,
+                    set: {
+                      pagesDiscovered: persistedPages.length,
+                    },
                     nowMs: ctx.nowMs,
                   });
 
@@ -485,6 +495,41 @@ const worker = {
           ...(hasBrowserSupport
             ? {
                 capturing: async (ctx) => {
+                  const workspaceRow = await ctx.d1
+                    .prepare(`SELECT plan FROM workspaces WHERE id = ? LIMIT 1`)
+                    .bind(ctx.workspaceId)
+                    .first<{ plan: WorkspacePlan }>();
+
+                  const scanConfigRow = await ctx.d1
+                    .prepare(
+                      `SELECT started_at, options_json, budgets_json FROM scans WHERE id = ? LIMIT 1`,
+                    )
+                    .bind(ctx.scanId)
+                    .first<{
+                      started_at: number | null;
+                      options_json: string;
+                      budgets_json: string;
+                    }>();
+
+                  const budgets = resolveScanBudgets({
+                    plan: workspaceRow?.plan ?? "single",
+                    budgetsJson: scanConfigRow?.budgets_json,
+                    optionsJson: scanConfigRow?.options_json,
+                  });
+
+                  const budgetEnforcer = new CrawlBudgetEnforcer(
+                    budgets,
+                    scanConfigRow?.started_at ?? ctx.nowMs,
+                  );
+
+                  const sessionPool = createBrowserSessionPool({
+                    maxConcurrentBrowsers: 2,
+                  });
+                  const trackedLauncher = sessionPool.createTrackedLauncher(
+                    options.browserLauncher ??
+                      launchCloudflarePlaywrightBrowser,
+                  );
+
                   const pendingStmt = ctx.d1
                     .prepare(
                       `SELECT id, url, normalized_url, template_type
@@ -521,87 +566,194 @@ const worker = {
                   let anyNetworkIdleTimedOut = false;
                   let totalEvidenceArtifacts = 0;
                   let totalR2BytesWritten = 0;
+                  let budgetExceededReason: string | null = null;
 
-                  for (let idx = 0; idx < pendingPages.length; idx += 1) {
-                    const targetPage = pendingPages[idx]!;
-                    const capture = await capturePageAcrossViewports({
-                      targetUrl: targetPage.url,
-                      browserBinding: env.BROWSER,
-                      browserLauncher:
-                        options.browserLauncher ??
-                        launchCloudflarePlaywrightBrowser,
-                      now: options.now,
-                    });
-                    const { pageId } = await recordCapturedPageInD1({
-                      d1: ctx.d1,
-                      scanId: ctx.scanId,
-                      pageId: targetPage.id || undefined,
-                      templateType: targetPage.template_type,
-                      capture,
-                      nowMs: ctx.nowMs,
-                    });
+                  try {
+                    for (let idx = 0; idx < pendingPages.length; idx += 1) {
+                      const targetPage = pendingPages[idx]!;
+                      const currentNowMs = options.now
+                        ? options.now()
+                        : Date.now();
+                      const budgetCheck =
+                        budgetEnforcer.checkBeforeNextPage(currentNowMs);
 
-                    lastCapturePageId = pageId;
-                    lastFinalUrl = capture.finalUrl;
-                    lastCaptureStatus = capture.captureStatus;
-                    lastStatusCode = capture.statusCode;
-                    if (
-                      capture.desktop.networkIdleTimedOut ||
-                      capture.mobile.networkIdleTimedOut
-                    ) {
-                      anyNetworkIdleTimedOut = true;
-                    }
-
-                    if (capture.captureStatus === "blocked") {
-                      if (idx === 0 && pendingPages.length === 1) {
-                        return {
-                          outcome: "failed",
-                          failureClass:
-                            capture.failureClass ?? "upstream_blocked",
-                          failureReason:
-                            capture.failureReason ??
-                            `Target returned a WAF or bot challenge screen for ${targetPage.url}`,
-                          pagesCaptured: 0,
-                          metadata: {
-                            pageId,
-                            captureStatus: capture.captureStatus,
-                            botProvider:
-                              capture.desktop.botChallenge.provider ??
-                              capture.mobile.botChallenge.provider,
-                          },
-                        };
+                      if (!budgetCheck.allowed) {
+                        budgetExceededReason =
+                          budgetCheck.reason ?? "Scan crawl budget exceeded.";
+                        for (
+                          let remIdx = idx;
+                          remIdx < pendingPages.length;
+                          remIdx += 1
+                        ) {
+                          const remPage = pendingPages[remIdx]!;
+                          if (remPage.id) {
+                            await ctx.d1
+                              .prepare(
+                                `UPDATE pages
+                                 SET capture_status = 'skipped',
+                                     failure_reason = ?,
+                                     updated_at = ?
+                                 WHERE id = ?`,
+                              )
+                              .bind(
+                                budgetExceededReason,
+                                currentNowMs,
+                                remPage.id,
+                              )
+                              .run();
+                          }
+                        }
+                        break;
                       }
-                      continue;
-                    }
 
-                    if (env.EVIDENCE) {
-                      const persistedEvidence =
-                        await persistPageCaptureEvidenceToR2AndD1({
-                          d1: ctx.d1,
-                          r2: env.EVIDENCE,
-                          scanId: ctx.scanId,
-                          pageId,
-                          capture,
-                          nowMs: ctx.nowMs,
+                      const capture = await capturePageAcrossViewports({
+                        targetUrl: targetPage.url,
+                        browserBinding: env.BROWSER,
+                        browserLauncher: trackedLauncher,
+                        navigationTimeoutMs: budgets.perPageTimeoutMs,
+                        maxBytesPerPage: budgets.maxBytesPerPage,
+                        now: options.now,
+                      });
+                      const { pageId } = await recordCapturedPageInD1({
+                        d1: ctx.d1,
+                        scanId: ctx.scanId,
+                        pageId: targetPage.id || undefined,
+                        templateType: targetPage.template_type,
+                        capture,
+                        nowMs: ctx.nowMs,
+                      });
+
+                      lastCapturePageId = pageId;
+                      lastFinalUrl = capture.finalUrl;
+                      lastCaptureStatus = capture.captureStatus;
+                      lastStatusCode = capture.statusCode;
+                      if (
+                        capture.desktop.networkIdleTimedOut ||
+                        capture.mobile.networkIdleTimedOut
+                      ) {
+                        anyNetworkIdleTimedOut = true;
+                      }
+                      if (capture.htmlTruncated && capture.failureReason) {
+                        budgetExceededReason = capture.failureReason;
+                      }
+
+                      if (capture.captureStatus === "blocked") {
+                        budgetEnforcer.recordPageCapture({
+                          browserMs: capture.browserMs ?? 2,
+                          captured: false,
                         });
-                      totalEvidenceArtifacts +=
-                        persistedEvidence.artifacts.length;
-                      totalR2BytesWritten +=
-                        persistedEvidence.totalBytesWritten;
-                    }
+                        if (idx === 0 && pendingPages.length === 1) {
+                          await updateScanUsageInD1({
+                            d1: ctx.d1,
+                            scanId: ctx.scanId,
+                            increment: {
+                              browserMs: budgetEnforcer.browserMs,
+                            },
+                            set: {
+                              pagesDiscovered: pendingPages.length,
+                              pagesCaptured: 0,
+                            },
+                            nowMs: ctx.nowMs,
+                          });
+                          return {
+                            outcome: "failed",
+                            failureClass:
+                              capture.failureClass ?? "upstream_blocked",
+                            failureReason:
+                              capture.failureReason ??
+                              `Target returned a WAF or bot challenge screen for ${targetPage.url}`,
+                            pagesCaptured: 0,
+                            metadata: {
+                              pageId,
+                              captureStatus: capture.captureStatus,
+                              botProvider:
+                                capture.desktop.botChallenge.provider ??
+                                capture.mobile.botChallenge.provider,
+                            },
+                          };
+                        }
+                        continue;
+                      }
 
-                    capturedCount += 1;
+                      let pageR2Bytes = 0;
+                      if (env.EVIDENCE) {
+                        const persistedEvidence =
+                          await persistPageCaptureEvidenceToR2AndD1({
+                            d1: ctx.d1,
+                            r2: env.EVIDENCE,
+                            scanId: ctx.scanId,
+                            pageId,
+                            capture,
+                            nowMs: ctx.nowMs,
+                          });
+                        totalEvidenceArtifacts +=
+                          persistedEvidence.artifacts.length;
+                        totalR2BytesWritten +=
+                          persistedEvidence.totalBytesWritten;
+                        pageR2Bytes = persistedEvidence.totalBytesWritten;
+                      }
+
+                      budgetEnforcer.recordPageCapture({
+                        browserMs: capture.browserMs ?? 2,
+                        r2BytesWritten: pageR2Bytes,
+                        captured: true,
+                      });
+
+                      capturedCount += 1;
+                    }
+                  } finally {
+                    await sessionPool.closeIdleBrowsers();
                   }
+
+                  await updateScanUsageInD1({
+                    d1: ctx.d1,
+                    scanId: ctx.scanId,
+                    increment: {
+                      browserMs: budgetEnforcer.browserMs,
+                    },
+                    set: {
+                      pagesDiscovered: pendingPages.length,
+                      pagesCaptured: capturedCount,
+                    },
+                    nowMs: ctx.nowMs,
+                  });
 
                   if (capturedCount === 0) {
                     return {
                       outcome: "failed",
-                      failureClass: "upstream_blocked",
-                      failureReason: `Target returned a WAF or bot challenge screen for ${ctx.targetUrl}`,
+                      failureClass: budgetExceededReason
+                        ? "budget_exceeded"
+                        : "upstream_blocked",
+                      failureReason:
+                        budgetExceededReason ??
+                        `Target returned a WAF or bot challenge screen for ${ctx.targetUrl}`,
                       pagesCaptured: 0,
                       metadata: {
                         pageId: lastCapturePageId,
-                        captureStatus: "blocked",
+                        captureStatus: budgetExceededReason
+                          ? "budget_exceeded"
+                          : "blocked",
+                      },
+                    };
+                  }
+
+                  if (budgetExceededReason) {
+                    return {
+                      outcome: "partial",
+                      failureClass: "budget_exceeded",
+                      failureReason: budgetExceededReason,
+                      pagesDiscovered: pendingPages.length,
+                      pagesCaptured: capturedCount,
+                      message: `Completed partial capture (${capturedCount}/${pendingPages.length} page(s)) within crawl budget: ${budgetExceededReason}`,
+                      metadata: {
+                        pageId: lastCapturePageId,
+                        pagesAttempted: pendingPages.length,
+                        pagesCaptured: capturedCount,
+                        captureStatus: "partial",
+                        budgetExceededReason,
+                        browserMs: budgetEnforcer.browserMs,
+                        evidenceArtifactsWritten: totalEvidenceArtifacts,
+                        r2BytesWritten: totalR2BytesWritten,
                       },
                     };
                   }
@@ -623,6 +775,7 @@ const worker = {
                       captureStatus: lastCaptureStatus,
                       statusCode: lastStatusCode,
                       networkIdleTimedOut: anyNetworkIdleTimedOut,
+                      browserMs: budgetEnforcer.browserMs,
                       evidenceArtifactsWritten: totalEvidenceArtifacts,
                       r2BytesWritten: totalR2BytesWritten,
                     },
@@ -648,6 +801,26 @@ const worker = {
             now: options.now,
           });
         } catch (err) {
+          const classification = classifyScanErrorForRetry(err);
+          if (!classification.retryable) {
+            const failNowMs = options.now ? options.now() : Date.now();
+            await handleDeadLetterScanMessageInD1({
+              d1: env.DB,
+              message: {
+                ...message.body,
+                targetUrl: normalized,
+                attempt,
+                failureClass: classification.failureClass,
+                failureReason: classification.failureReason,
+              },
+              queueName: "permanent-error-short-circuit",
+              now: () => failNowMs,
+            });
+            acceptedScanIds.push(scanId);
+            message.ack();
+            continue;
+          }
+
           message.retry({
             delaySeconds: computeRetryBackoffSeconds(attempt),
           });

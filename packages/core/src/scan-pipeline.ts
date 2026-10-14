@@ -477,22 +477,39 @@ export async function advanceScanStageInD1(
       scanRow.id,
       terminalStatus,
     );
+    const terminalFailureClass =
+      terminalStatus === "partial" && stageResult.failureClass
+        ? normalizeFailureClass(stageResult.failureClass, "budget_exceeded")
+        : null;
+    const terminalFailureReason =
+      terminalStatus === "partial"
+        ? (stageResult.failureReason ?? stageResult.message ?? null)
+        : null;
     const terminalMessage =
       terminalStatus === "partial"
-        ? `Scan completed with partial coverage for ${canonicalTargetUrl}`
+        ? (stageResult.failureReason ??
+          stageResult.message ??
+          `Scan completed with partial coverage for ${canonicalTargetUrl}`)
         : `Scan completed for ${canonicalTargetUrl}`;
 
     await d1
       .prepare(
         `UPDATE scans
          SET status = ?,
-             failure_class = NULL,
-             failure_reason = NULL,
+             failure_class = ?,
+             failure_reason = ?,
              completed_at = ?,
              updated_at = ?
          WHERE id = ?`,
       )
-      .bind(terminalStatus, nowMs, nowMs, scanRow.id)
+      .bind(
+        terminalStatus,
+        terminalFailureClass,
+        terminalFailureReason,
+        nowMs,
+        nowMs,
+        scanRow.id,
+      )
       .run();
 
     await d1
@@ -512,6 +529,9 @@ export async function advanceScanStageInD1(
         JSON.stringify({
           idempotencyKey: terminalKey,
           completedFromStage: executedStage,
+          ...(terminalFailureClass
+            ? { failureClass: terminalFailureClass }
+            : {}),
           attempt,
         }),
         nowMs + 1,

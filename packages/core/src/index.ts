@@ -97,6 +97,7 @@ import { validateAndNormalizeIntakeUrl } from "./intake";
 
 export * from "./browser-capture";
 export * from "./cloudflare";
+export * from "./crawl-budgets";
 export * from "./email-otp";
 export * from "./evidence-storage";
 export * from "./intake";

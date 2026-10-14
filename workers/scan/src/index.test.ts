@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import {
   PlatformBindingError,
+  ScanIntakeError,
   listScanEvidenceArtifactsInD1,
   verifyScanEvidenceCompletenessInD1,
   type D1BoundStatementLike,
@@ -1126,5 +1127,298 @@ describe("@mortem/scan-worker handlers", () => {
     );
     expect(completeness.complete).toBe(true);
     expect(completeness.violations).toHaveLength(0);
+  });
+
+  it("completes scan as partial (budget_exceeded) with gathered evidence and usage_json telemetry when crawl budgets are exceeded mid-capture, and skips retries on permanent errors (THE-179)", async () => {
+    const d1 = createSqliteD1();
+    const { scanId, workspaceId, siteId } = await seedWorkspaceAndQueuedScan(
+      d1,
+      "scan_budget_01",
+      "https://linear.app/",
+    );
+
+    // Configure tight maxPages=2 budget on scans row, while 3 pending pages exist
+    await d1
+      .prepare(
+        `UPDATE scans
+         SET started_at = ?,
+             budgets_json = ?
+         WHERE id = ?`,
+      )
+      .bind(
+        1_760_000_000_000,
+        JSON.stringify({
+          maxPages: 2,
+          maxWallTimeMs: 90_000,
+          maxBrowserMs: 60_000,
+        }),
+        scanId,
+      )
+      .run();
+
+    const pagesToSeed = [
+      { id: "page_b1", url: "https://linear.app/", template: "home" },
+      {
+        id: "page_b2",
+        url: "https://linear.app/pricing",
+        template: "pricing",
+      },
+      {
+        id: "page_b3",
+        url: "https://linear.app/contact",
+        template: "contact",
+      },
+    ];
+    for (let idx = 0; idx < pagesToSeed.length; idx += 1) {
+      const p = pagesToSeed[idx]!;
+      await d1
+        .prepare(
+          `INSERT INTO pages (
+            id, scan_id, url, normalized_url, template_type, capture_status,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`,
+        )
+        .bind(
+          p.id,
+          scanId,
+          p.url,
+          p.url,
+          p.template,
+          1_760_000_001_000 + idx,
+          1_760_000_001_000 + idx,
+        )
+        .run();
+    }
+
+    const r2Objects = new Map<string, number>();
+    const r2Bucket: R2BucketLike = {
+      async put(key, value) {
+        const size =
+          typeof value === "string"
+            ? Buffer.byteLength(value)
+            : value.byteLength;
+        r2Objects.set(key, size);
+        return { key, size };
+      },
+      async head(key) {
+        const size = r2Objects.get(key);
+        return size !== undefined ? { key, size } : null;
+      },
+    };
+
+    const enqueuedMessages: ScanQueueMessage[] = [];
+    const ackBudget = vi.fn();
+    const retryBudget = vi.fn();
+
+    let currentClockMs = 1_760_000_005_000;
+
+    await worker.queue(
+      {
+        queue: "mortem-scans",
+        messages: [
+          {
+            id: "msg_budget_1",
+            body: {
+              kind: "website_scan",
+              scanId,
+              workspaceId,
+              siteId,
+              targetUrl: "https://linear.app/",
+              stage: "capturing",
+              attempt: 1,
+              idempotencyKey: `${scanId}:capturing`,
+            },
+            ack: ackBudget,
+            retry: retryBudget,
+          },
+        ],
+      },
+      {
+        ENVIRONMENT: "test",
+        DB: d1,
+        EVIDENCE: r2Bucket,
+        SCAN_QUEUE: {
+          send: async (msg: ScanQueueMessage) => {
+            enqueuedMessages.push(msg);
+          },
+        },
+      },
+      {
+        now: () => {
+          currentClockMs += 500;
+          return currentClockMs;
+        },
+        browserLauncher: async () => ({
+          async newContext() {
+            return {
+              async newPage() {
+                let currentUrl = "https://linear.app/";
+                return {
+                  async addInitScript() {},
+                  async route() {},
+                  on() {},
+                  async goto(targetUrl: string) {
+                    currentUrl = targetUrl;
+                    const req = {
+                      url: () => currentUrl,
+                      method: () => "GET",
+                      resourceType: () => "document",
+                      isNavigationRequest: () => true,
+                      redirectedFrom: () => null,
+                    };
+                    return {
+                      url: () => currentUrl,
+                      status: () => 200,
+                      headers: () => ({ "content-type": "text/html" }),
+                      request: () => req,
+                    };
+                  },
+                  async waitForLoadState() {},
+                  async evaluate<R>() {
+                    return { ttfbMs: 25, fcpMs: 80 } as unknown as R;
+                  },
+                  async content() {
+                    return "<html><head><title>Linear</title></head><body>Content</body></html>";
+                  },
+                  async title() {
+                    return "Linear";
+                  },
+                  url: () => currentUrl,
+                  async screenshot() {
+                    return new Uint8Array([137, 80, 78, 71]);
+                  },
+                  async close() {},
+                };
+              },
+              async close() {},
+            };
+          },
+          async close() {},
+        }),
+      },
+    );
+
+    expect(ackBudget).toHaveBeenCalledOnce();
+    expect(retryBudget).not.toHaveBeenCalled();
+
+    const scanRow = await d1
+      .prepare(
+        `SELECT status, failure_class, failure_reason, usage_json
+         FROM scans WHERE id = ?`,
+      )
+      .bind(scanId)
+      .first<{
+        status: string;
+        failure_class: string | null;
+        failure_reason: string | null;
+        usage_json: string;
+      }>();
+
+    expect(scanRow?.status).toBe("partial");
+    expect(scanRow?.failure_class).toBe("budget_exceeded");
+    expect(scanRow?.failure_reason).toContain("maxPages");
+
+    const usage = JSON.parse(scanRow?.usage_json ?? "{}") as {
+      browserMs?: number;
+      r2BytesWritten?: number;
+      pagesDiscovered?: number;
+      pagesCaptured?: number;
+    };
+    expect(usage.pagesDiscovered).toBe(3);
+    expect(usage.pagesCaptured).toBe(2);
+    expect(usage.browserMs).toBeGreaterThan(0);
+    expect(usage.r2BytesWritten).toBeGreaterThan(0);
+
+    const pageRows = await d1
+      .prepare(
+        `SELECT id, capture_status, failure_reason
+         FROM pages WHERE scan_id = ? ORDER BY created_at ASC`,
+      )
+      .bind(scanId).all!<{
+      id: string;
+      capture_status: string;
+      failure_reason: string | null;
+    }>();
+
+    expect(pageRows.results).toEqual([
+      { id: "page_b1", capture_status: "captured", failure_reason: null },
+      { id: "page_b2", capture_status: "captured", failure_reason: null },
+      {
+        id: "page_b3",
+        capture_status: "skipped",
+        failure_reason: expect.stringContaining("maxPages"),
+      },
+    ]);
+
+    // 2. Verify permanent error (e.g. ScanIntakeError ssrf_blocked) skips retry and transitions directly to failed
+    const d1Perm = createSqliteD1();
+    const {
+      scanId: permScanId,
+      workspaceId: permWorkspaceId,
+      siteId: permSiteId,
+    } = await seedWorkspaceAndQueuedScan(
+      d1Perm,
+      "scan_perm_err_01",
+      "https://example.com/",
+    );
+    const ackPerm = vi.fn();
+    const retryPerm = vi.fn();
+
+    await worker.queue(
+      {
+        queue: "mortem-scans",
+        messages: [
+          {
+            id: "msg_perm_1",
+            body: {
+              kind: "website_scan",
+              scanId: permScanId,
+              workspaceId: permWorkspaceId,
+              siteId: permSiteId,
+              targetUrl: "https://example.com/",
+              stage: "discovering",
+              attempt: 1,
+              idempotencyKey: `${permScanId}:discovering`,
+            },
+            ack: ackPerm,
+            retry: retryPerm,
+          },
+        ],
+      },
+      {
+        ENVIRONMENT: "test",
+        DB: d1Perm,
+      },
+      {
+        now: () => 1_760_000_090_000,
+        stageHandlers: {
+          discovering: () => {
+            throw new ScanIntakeError(
+              "ssrf_blocked",
+              "Redirect target resolved to private IPv4 10.0.0.1",
+              403,
+            );
+          },
+        },
+      },
+    );
+
+    expect(ackPerm).toHaveBeenCalledOnce();
+    expect(retryPerm).not.toHaveBeenCalled();
+
+    const permScanRow = await d1Perm
+      .prepare(
+        `SELECT status, failure_class, failure_reason FROM scans WHERE id = ?`,
+      )
+      .bind(permScanId)
+      .first<{
+        status: string;
+        failure_class: string | null;
+        failure_reason: string | null;
+      }>();
+
+    expect(permScanRow?.status).toBe("failed");
+    expect(permScanRow?.failure_class).toBe("ssrf_blocked");
+    expect(permScanRow?.failure_reason).toContain("10.0.0.1");
   });
 });

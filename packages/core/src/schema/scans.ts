@@ -113,7 +113,13 @@ export interface ScanOptionsJson {
 
 export interface ScanBudgetsJson {
   maxPages?: number;
+  maxWallTimeMs?: number;
   maxWallClockMs?: number;
+  maxBytesPerPage?: number;
+  maxBrowserMs?: number;
+  maxExternalLinkChecks?: number;
+  perFetchTimeoutMs?: number;
+  perPageTimeoutMs?: number;
   maxAiInputTokens?: number;
   maxAiOutputTokens?: number;
 }
@@ -121,8 +127,10 @@ export interface ScanBudgetsJson {
 export interface ScanUsageJson {
   pagesDiscovered?: number;
   pagesCaptured?: number;
+  browserMs?: number;
   browserDurationMs?: number;
   r2BytesWritten?: number;
+  psiCalls?: number;
   psiRequests?: number;
   aiInputTokens?: number;
   aiOutputTokens?: number;
