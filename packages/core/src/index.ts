@@ -78,55 +78,25 @@ export function isAllowedScanMethod(
 /**
  * Normalizes a user-supplied domain or URL string into a canonical HTTP(S) URL.
  * - Prepends `https://` when no scheme is provided
- * - Rejects non-HTTP(S) schemes (`javascript:`, `data:`, `file:`, `ftp:`)
+ * - Allows only `http:` and `https:` on ports 80 and 443
  * - Rejects URLs containing embedded credentials (`user:pass@host`)
- * - Strips URL `#hash` fragments so identical pages normalize consistently
- * - Requires a hostname containing at least one dot and a non-empty TLD
+ * - Rejects IP literals, `localhost`, `.local`, `.internal`, and `.localhost`
+ * - Lowercases and Punycode-normalizes hostnames
+ * - Strips URL `#hash` fragments and tracking params (`utm_*`, `gclid`, `fbclid`, etc.)
+ * - Canonicalizes root slash (`https://stripe.com/`)
  */
 export function normalizeUrlInput(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-
-  const hasExplicitScheme = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmed);
-  if (hasExplicitScheme && !/^https?:\/\//i.test(trimmed)) {
-    return null;
-  }
-
-  const candidate = hasExplicitScheme ? trimmed : `https://${trimmed}`;
-
   try {
-    const parsed = new URL(candidate);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return null;
-    }
-    if (parsed.username || parsed.password) {
-      return null;
-    }
-
-    const host = parsed.hostname.toLowerCase();
-    if (
-      !host ||
-      !host.includes(".") ||
-      host.startsWith(".") ||
-      host.endsWith(".")
-    ) {
-      return null;
-    }
-
-    const parts = host.split(".");
-    const tld = parts[parts.length - 1];
-    if (!tld || tld.length < 2) {
-      return null;
-    }
-
-    parsed.hash = "";
-    return parsed.toString();
+    return validateAndNormalizeIntakeUrl(raw).normalizedUrl;
   } catch {
     return null;
   }
 }
 
+import { validateAndNormalizeIntakeUrl } from "./intake";
+
 export * from "./cloudflare";
+export * from "./intake";
 export * from "./schema/auth";
 export * from "./schema/scans";
 export * from "./workspaces";

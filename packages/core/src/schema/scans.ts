@@ -455,6 +455,36 @@ export const reportShares = sqliteTable(
   ],
 );
 
+export const scanIntakeEvents = sqliteTable(
+  "scan_intake_events",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    ipHash: text("ip_hash").notNull(),
+    targetHost: text("target_host").notNull(),
+    scanId: text("scan_id").references(() => scans.id, {
+      onDelete: "set null",
+    }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    index("idx_scan_intake_events_workspace_created").on(
+      table.workspaceId,
+      table.createdAt,
+    ),
+    index("idx_scan_intake_events_ip_created").on(
+      table.ipHash,
+      table.createdAt,
+    ),
+    index("idx_scan_intake_events_host_created").on(
+      table.targetHost,
+      table.createdAt,
+    ),
+  ],
+);
+
 export const scanSchema = {
   sites,
   scans,
@@ -466,6 +496,7 @@ export const scanSchema = {
   scores,
   reports,
   reportShares,
+  scanIntakeEvents,
 };
 
 export const mortemSchema = {

@@ -88,6 +88,7 @@ export interface MortemWebBindings {
   BETTER_AUTH_URL?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  TURNSTILE_SECRET_KEY?: string;
   DB?: D1DatabaseLike;
   EVIDENCE?: R2BucketLike;
   SCAN_QUEUE?: QueueLike;
@@ -101,6 +102,7 @@ export interface ValidatedMortemWebBindings {
   BETTER_AUTH_URL?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  TURNSTILE_SECRET_KEY?: string;
   DB: D1DatabaseLike;
   EVIDENCE: R2BucketLike;
   SCAN_QUEUE: QueueLike;
@@ -169,6 +171,7 @@ export function requireWebBindings(
     BETTER_AUTH_URL: env.BETTER_AUTH_URL,
     GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET,
+    TURNSTILE_SECRET_KEY: env.TURNSTILE_SECRET_KEY,
     DB: env.DB,
     EVIDENCE: env.EVIDENCE,
     SCAN_QUEUE: env.SCAN_QUEUE,
