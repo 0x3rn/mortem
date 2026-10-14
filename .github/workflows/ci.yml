@@ -41,11 +41,8 @@ jobs:
       - name: Run unit and integration tests
         run: npm test
 
-      - name: Build Next.js and scan worker workspaces
+      - name: Build Next.js, OpenNext Cloudflare bundle, and scan worker
         run: npm run build
-
-      - name: Build OpenNext Cloudflare bundle
-        run: npm run build:cf
 
       - name: Run Playwright E2E smoke tests
         run: npm run test:e2e
