@@ -15,6 +15,6 @@
       "@mortem/core": ["../../packages/core/src/index.ts"]
     }
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "../../packages/core/src/node-sqlite.d.ts"],
   "exclude": ["node_modules"]
 }

@@ -1165,6 +1165,8 @@ export async function submitScanIntake(
     siteId,
     targetUrl: preflight.finalUrl,
     stage: "queued",
+    attempt: 1,
+    idempotencyKey: `${scanId}:discovering`,
   });
 
   return {

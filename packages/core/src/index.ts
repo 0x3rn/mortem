@@ -98,6 +98,7 @@ import { validateAndNormalizeIntakeUrl } from "./intake";
 export * from "./cloudflare";
 export * from "./intake";
 export * from "./scan-history";
+export * from "./scan-pipeline";
 export * from "./schema/auth";
 export * from "./schema/scans";
 export * from "./workspaces";

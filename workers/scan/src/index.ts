@@ -3,26 +3,40 @@ import {
   PlatformBindingError,
   READ_ONLY_SCAN_POLICY,
   SCAN_STAGES,
+  advanceScanStageInD1,
   buildSmokeArtifactKey,
+  computeRetryBackoffSeconds,
+  handleDeadLetterScanMessageInD1,
   isAllowedScanMethod,
   normalizeUrlInput,
   requireScanWorkerBindings,
   type BrowserBindingLike,
   type MortemScanBindings,
+  type ScanFailureClass,
+  type ScanPipelineQueueMessage,
   type ScanStage,
+  type ScanStageHandlerMap,
 } from "@mortem/core";
 
-export interface ScanQueueMessage {
-  kind?: "scan" | "platform_smoke";
+export interface ScanQueueMessage extends ScanPipelineQueueMessage {
+  kind?: "website_scan" | "scan" | "platform_smoke";
   smokeId?: string;
   scanId: string;
+  workspaceId?: string;
+  siteId?: string;
   targetUrl: string;
   stage?: ScanStage;
+  attempt?: number;
+  pageId?: string;
+  idempotencyKey?: string;
+  failureClass?: ScanFailureClass;
+  failureReason?: string;
 }
 
 export interface QueueMessageEnvelope<T> {
   id: string;
   body: T;
+  attempts?: number;
   ack(): void;
   retry(options?: { delaySeconds?: number }): void;
 }
@@ -51,6 +65,8 @@ export type BrowserSmokeCaptureFn = (
 
 export interface QueueExecutionOptions {
   browserCapture?: BrowserSmokeCaptureFn;
+  stageHandlers?: ScanStageHandlerMap;
+  now?: () => number;
 }
 
 export interface QueueBatchSummary {
@@ -273,9 +289,43 @@ const worker = {
     const acceptedScanIds: string[] = [];
     const rejectedScanIds: string[] = [];
     const completedSmokeIds: string[] = [];
+    const isDeadLetterBatch = batch.queue.includes("-dlq");
 
     for (const message of batch.messages) {
       const { kind, smokeId, scanId, targetUrl } = message.body;
+      const attempt = message.body.attempt ?? message.attempts ?? 1;
+
+      if (isDeadLetterBatch) {
+        if (!scanId) {
+          rejectedScanIds.push(message.id);
+          message.ack();
+          continue;
+        }
+
+        if (env.DB) {
+          try {
+            await handleDeadLetterScanMessageInD1({
+              d1: env.DB,
+              message: {
+                ...message.body,
+                attempt,
+              },
+              queueName: batch.queue,
+              now: options.now,
+            });
+          } catch (err) {
+            message.retry({
+              delaySeconds: computeRetryBackoffSeconds(attempt),
+            });
+            throw err;
+          }
+        }
+
+        acceptedScanIds.push(scanId);
+        message.ack();
+        continue;
+      }
+
       const normalized = normalizeUrlInput(targetUrl);
 
       if (!scanId || !normalized) {
@@ -291,10 +341,35 @@ const worker = {
           completedSmokeIds.push(smokeId);
           message.ack();
         } catch (err) {
-          message.retry({ delaySeconds: 5 });
+          message.retry({
+            delaySeconds: computeRetryBackoffSeconds(attempt),
+          });
           throw err;
         }
         continue;
+      }
+
+      if (env.DB) {
+        try {
+          await advanceScanStageInD1({
+            d1: env.DB,
+            scanQueue: env.SCAN_QUEUE as unknown as Parameters<
+              typeof advanceScanStageInD1
+            >[0]["scanQueue"],
+            message: {
+              ...message.body,
+              targetUrl: normalized,
+              attempt,
+            },
+            stageHandlers: options.stageHandlers,
+            now: options.now,
+          });
+        } catch (err) {
+          message.retry({
+            delaySeconds: computeRetryBackoffSeconds(attempt),
+          });
+          throw err;
+        }
       }
 
       acceptedScanIds.push(scanId);
