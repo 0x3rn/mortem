@@ -3,12 +3,15 @@ import path from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import {
+  EMAIL_OTP_TTL_MS,
   issueWorkspaceClaimToken,
   type D1BoundStatementLike,
   type D1DatabaseLike,
   type D1ExecResultLike,
 } from "@mortem/core";
 import { describe, expect, it } from "vitest";
+import { handleSendEmailOtp } from "@/app/api/auth/email-otp/send/route";
+import { handleVerifyEmailOtp } from "@/app/api/auth/email-otp/verify/route";
 import { createMortemAuth, type PasswordResetNotice } from "@/lib/auth";
 import { handleClaimWorkspaceResource } from "./[workspaceId]/claim/route";
 import {
@@ -402,5 +405,256 @@ describe("Better Auth + D1 workspace route handlers & isolation (THE-171)", () =
       { d1 },
     );
     expect(expiredRes.status).toBe(401);
+  });
+
+  it("enforces Cloudflare Turnstile, 5-minute OTP expiry, code invalidation on resend, and email_verified on sign-up and sign-in", async () => {
+    const d1 = createSqliteD1Adapter();
+    let currentNow = 1_760_000_000_000;
+    const issuedCodes: string[] = [];
+
+    const mockEnv = {
+      ENVIRONMENT: "production" as const,
+      TURNSTILE_SECRET_KEY: "turnstile-secret-test-key",
+    };
+
+    const sendOverrides = {
+      now: () => currentNow,
+      turnstileVerifier: async (token: string, secret: string) =>
+        secret === "turnstile-secret-test-key" && token === "cf-turnstile-ok",
+      onOtpIssued: ({ code }: { code: string }) => {
+        issuedCodes.push(code);
+      },
+    };
+    const verifyOverrides = {
+      now: () => currentNow,
+    };
+
+    // 1. Missing or invalid Turnstile token is rejected with 403 turnstile_failed
+    const missingTurnstileRes = await handleSendEmailOtp(
+      new Request("http://localhost:3000/api/auth/email-otp/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mode: "sign-up",
+          name: "Margaret Hamilton",
+          email: "margaret@apollo.nasa.gov",
+          password: "apollo-11-flight-software",
+          turnstileToken: "",
+        }),
+      }),
+      { d1, env: mockEnv, overrides: sendOverrides },
+    );
+    expect(missingTurnstileRes.status).toBe(403);
+    await expect(missingTurnstileRes.json()).resolves.toMatchObject({
+      ok: false,
+      code: "turnstile_failed",
+    });
+
+    const badTurnstileRes = await handleSendEmailOtp(
+      new Request("http://localhost:3000/api/auth/email-otp/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mode: "sign-up",
+          name: "Margaret Hamilton",
+          email: "margaret@apollo.nasa.gov",
+          password: "apollo-11-flight-software",
+          turnstileToken: "cf-bad-token",
+        }),
+      }),
+      { d1, env: mockEnv, overrides: sendOverrides },
+    );
+    expect(badTurnstileRes.status).toBe(403);
+
+    // 2. Valid Turnstile token issues a 6-digit OTP code with 5-minute TTL (300 seconds)
+    const firstSendRes = await handleSendEmailOtp(
+      new Request("http://localhost:3000/api/auth/email-otp/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mode: "sign-up",
+          name: "Margaret Hamilton",
+          email: "margaret@apollo.nasa.gov",
+          password: "apollo-11-flight-software",
+          turnstileToken: "cf-turnstile-ok",
+        }),
+      }),
+      { d1, env: mockEnv, overrides: sendOverrides },
+    );
+    expect(firstSendRes.status).toBe(200);
+    await expect(firstSendRes.json()).resolves.toMatchObject({
+      ok: true,
+      ttlSeconds: 300,
+      expiresAt: currentNow + EMAIL_OTP_TTL_MS,
+    });
+    expect(issuedCodes).toHaveLength(1);
+    const firstCode = issuedCodes[0]!;
+
+    // 3. Resending a new code invalidates the previous code
+    currentNow += 30_000;
+    const resendRes = await handleSendEmailOtp(
+      new Request("http://localhost:3000/api/auth/email-otp/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mode: "sign-up",
+          name: "Margaret Hamilton",
+          email: "margaret@apollo.nasa.gov",
+          password: "apollo-11-flight-software",
+          isResend: true,
+        }),
+      }),
+      { d1, env: mockEnv, overrides: sendOverrides },
+    );
+    expect(resendRes.status).toBe(200);
+    expect(issuedCodes).toHaveLength(2);
+    const secondCode = issuedCodes[1]!;
+
+    if (firstCode !== secondCode) {
+      const oldCodeVerifyRes = await handleVerifyEmailOtp(
+        new Request("http://localhost:3000/api/auth/email-otp/verify", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "sign-up",
+            name: "Margaret Hamilton",
+            email: "margaret@apollo.nasa.gov",
+            password: "apollo-11-flight-software",
+            code: firstCode,
+          }),
+        }),
+        { d1, env: mockEnv, overrides: verifyOverrides },
+      );
+      expect(oldCodeVerifyRes.status).toBe(422);
+      await expect(oldCodeVerifyRes.json()).resolves.toMatchObject({
+        ok: false,
+        code: "otp_invalid",
+      });
+    }
+
+    // 4. Advance clock past 5 minutes (300_001 ms) -> code expires with 410 otp_expired
+    currentNow += EMAIL_OTP_TTL_MS + 1;
+    const expiredOtpRes = await handleVerifyEmailOtp(
+      new Request("http://localhost:3000/api/auth/email-otp/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mode: "sign-up",
+          name: "Margaret Hamilton",
+          email: "margaret@apollo.nasa.gov",
+          password: "apollo-11-flight-software",
+          code: secondCode,
+        }),
+      }),
+      { d1, env: mockEnv, overrides: verifyOverrides },
+    );
+    expect(expiredOtpRes.status).toBe(410);
+    await expect(expiredOtpRes.json()).resolves.toMatchObject({
+      ok: false,
+      code: "otp_expired",
+    });
+
+    // 5. Resend a fresh code and verify within 5 minutes -> creates user, marks email_verified = 1, issues session cookie
+    await handleSendEmailOtp(
+      new Request("http://localhost:3000/api/auth/email-otp/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mode: "sign-up",
+          name: "Margaret Hamilton",
+          email: "margaret@apollo.nasa.gov",
+          password: "apollo-11-flight-software",
+          isResend: true,
+        }),
+      }),
+      { d1, env: mockEnv, overrides: sendOverrides },
+    );
+    const freshSignUpCode = issuedCodes[2]!;
+
+    const verifySignUpRes = await handleVerifyEmailOtp(
+      new Request("http://localhost:3000/api/auth/email-otp/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mode: "sign-up",
+          name: "Margaret Hamilton",
+          email: "margaret@apollo.nasa.gov",
+          password: "apollo-11-flight-software",
+          code: freshSignUpCode,
+        }),
+      }),
+      { d1, env: mockEnv, overrides: verifyOverrides },
+    );
+    expect(verifySignUpRes.status).toBe(200);
+    const signUpCookie = extractCookieHeader(verifySignUpRes);
+    expect(signUpCookie).toContain("better-auth.session_token=");
+
+    const userRow = await d1
+      .prepare(`SELECT email_verified FROM users WHERE lower(email) = ?`)
+      .bind("margaret@apollo.nasa.gov")
+      .first<{ email_verified: number }>();
+    expect(userRow?.email_verified).toBe(1);
+
+    // Clear sessions to simulate sign-out before testing Sign In OTP
+    await d1.prepare(`DELETE FROM sessions`).bind().run();
+
+    // 6. Sign-in with wrong password fails immediately on /send without issuing an OTP
+    const wrongPassRes = await handleSendEmailOtp(
+      new Request("http://localhost:3000/api/auth/email-otp/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mode: "sign-in",
+          email: "margaret@apollo.nasa.gov",
+          password: "wrong-password-123",
+          turnstileToken: "cf-turnstile-ok",
+        }),
+      }),
+      { d1, env: mockEnv, overrides: sendOverrides },
+    );
+    expect(wrongPassRes.status).toBe(401);
+    expect(issuedCodes).toHaveLength(3);
+
+    // 7. Sign-in with valid password issues OTP without leaving any active pre-check session in D1
+    const signInSendRes = await handleSendEmailOtp(
+      new Request("http://localhost:3000/api/auth/email-otp/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mode: "sign-in",
+          email: "margaret@apollo.nasa.gov",
+          password: "apollo-11-flight-software",
+          turnstileToken: "cf-turnstile-ok",
+        }),
+      }),
+      { d1, env: mockEnv, overrides: sendOverrides },
+    );
+    expect(signInSendRes.status).toBe(200);
+    expect(issuedCodes).toHaveLength(4);
+    const signInCode = issuedCodes[3]!;
+
+    const sessionsBeforeOtpVerify = await d1
+      .prepare(`SELECT COUNT(*) as cnt FROM sessions`)
+      .bind()
+      .first<{ cnt: number }>();
+    expect(sessionsBeforeOtpVerify?.cnt).toBe(0);
+
+    // 8. Verifying the 6-digit sign-in OTP issues the session cookie and consumes the code
+    const verifySignInRes = await handleVerifyEmailOtp(
+      new Request("http://localhost:3000/api/auth/email-otp/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mode: "sign-in",
+          email: "margaret@apollo.nasa.gov",
+          password: "apollo-11-flight-software",
+          code: signInCode,
+        }),
+      }),
+      { d1, env: mockEnv, overrides: verifyOverrides },
+    );
+    expect(verifySignInRes.status).toBe(200);
+    const signInCookie = extractCookieHeader(verifySignInRes);
+    expect(signInCookie).toContain("better-auth.session_token=");
   });
 });

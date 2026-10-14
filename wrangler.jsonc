@@ -22,7 +22,9 @@
   },
   "vars": {
     "ENVIRONMENT": "production",
-    "BETTER_AUTH_URL": "https://mortem.corstack.dev"
+    "BETTER_AUTH_URL": "https://mortem.corstack.dev",
+    "NEXT_PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAAFSFBv33VMh4DpXy",
+    "MORTEM_EMAIL_FROM": "mortem@corstack.dev"
   },
   "d1_databases": [
     {

@@ -49,3 +49,16 @@ Authentication and session management must run natively inside the Cloudflare Wo
 
 - When an anonymous visitor purchases a Single Autopsy report (`Milestone 08`), Mortem issues a high-entropy token (`mrtm_claim_<random>`) via `issueWorkspaceClaimToken(db, ...)`. Only its SHA-256 hash (`token_hash`) is persisted in `workspace_claim_tokens`.
 - After signing up or signing in, the user redeems the token into their workspace via `redeemWorkspaceClaimToken(db, { rawToken, userId, workspaceId })`, which enforces `requireWorkspaceAccess(db, userId, workspaceId, "member")`, validates token expiry and single-use status, and atomically records `claimed_by_workspace_id`, `claimed_by_user_id`, and `claimed_at`.
+
+### 6. Cloudflare Turnstile Gate & 5-Minute Email Confirmation Code (OTP)
+
+- Both `/sign-up` and `/sign-in` render an explicit **Cloudflare Turnstile** widget (`NEXT_PUBLIC_TURNSTILE_SITE_KEY`). The submit button (`Create workspace & account` / `Sign in to workspace`) remains disabled (`disabled={submitting || !turnstileToken}`) and visually greyed out until the Turnstile challenge completes.
+- Direct `POST /api/auth/sign-in/email` and `POST /api/auth/sign-up/email` requests are blocked with `403 otp_required` whenever `TURNSTILE_SECRET_KEY` is configured.
+- Authentication proceeds through a two-step OTP handshake (`packages/core/src/email-otp.ts`):
+  1. `POST /api/auth/email-otp/send`:
+     - Verifies the Turnstile token via Cloudflare `https://challenges.cloudflare.com/turnstile/v0/siteverify` using `TURNSTILE_SECRET_KEY` (skipped only for in-flow `isResend: true` requests).
+     - Pre-validates account state (rejecting existing emails on `sign-up` with `409` or wrong credentials on `sign-in` with `401` before sending an email).
+     - Issues a 6-digit numeric OTP code (`EMAIL_OTP_TTL_MS = 300_000` ms = 5 minutes), invalidates any previous active code for `(mode, email)` in D1 `verifications` (`identifier = "mortem_otp:${mode}:${email}"`), stores only its SHA-256 digest (`codeHash`), and delivers the code via Resend (`RESEND_API_KEY`, `MORTEM_EMAIL_FROM="mortem@corstack.dev"`).
+  2. `POST /api/auth/email-otp/verify`:
+     - Rejects expired codes (`nowMs > expires_at`) with `410 otp_expired` and immediately deletes the row from `verifications`.
+     - Enforces a 5-attempt brute-force cap (`429 otp_max_attempts`), deletes the row upon successful verification (single-use), completes the Better Auth `sign-up` or `sign-in` session creation, and marks `users.email_verified = 1`.

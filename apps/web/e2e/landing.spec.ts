@@ -22,6 +22,45 @@ async function assertZeroSeriousOrCriticalAxeViolations(
   ).toEqual([]);
 }
 
+async function installTurnstileWidgetStub(page: Page) {
+  await page.route(
+    "https://challenges.cloudflare.com/turnstile/v0/api.js*",
+    async (route) => {
+      const script = `
+        window.turnstile = {
+          render: function(container, options) {
+            container.innerHTML = '';
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.setAttribute('data-testid', 'mock-turnstile-challenge');
+            btn.textContent = 'Complete Cloudflare Turnstile challenge';
+            btn.style.padding = '8px 12px';
+            btn.style.borderRadius = '8px';
+            btn.style.border = '1px solid #3f3f46';
+            btn.style.background = '#18181b';
+            btn.style.color = '#e4e4e7';
+            btn.addEventListener('click', function() {
+              btn.textContent = 'Turnstile verified';
+              if (options && typeof options.callback === 'function') {
+                options.callback('e2e-turnstile-pass-token');
+              }
+            });
+            container.appendChild(btn);
+            return 'mock-widget-1';
+          },
+          reset: function() {},
+          remove: function() {}
+        };
+      `;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/javascript",
+        body: script,
+      });
+    },
+  );
+}
+
 test("renders Mortem landing page and normalizes intake URL", async ({
   page,
 }) => {
@@ -42,9 +81,12 @@ test("renders Mortem landing page and normalizes intake URL", async ({
   );
 });
 
-test("completes sign-up, automatic workspace provisioning, sign-out, and sign-in flow", async ({
+test("enforces Cloudflare Turnstile disabled button gate, 5-minute OTP confirmation, code resend invalidation, and sign-in OTP flow", async ({
   page,
 }) => {
+  test.setTimeout(60_000);
+  await installTurnstileWidgetStub(page);
+
   const uniqueEmail = `e2e-${Date.now()}@mortem.test`;
   const password = "e2e-forensic-password-99";
 
@@ -54,7 +96,7 @@ test("completes sign-up, automatic workspace provisioning, sign-out, and sign-in
     timeout: 15_000,
   });
 
-  // 2. Register on /sign-up -> redirects to /workspace with provisioned personal workspace
+  // 2. Visit /sign-up: verify submit button is disabled until Turnstile challenge is completed
   await page.goto("/sign-up");
   await expect(
     page.getByRole("heading", { name: /create your mortem workspace/i }),
@@ -63,9 +105,62 @@ test("completes sign-up, automatic workspace provisioning, sign-out, and sign-in
   await page.locator("#auth-name").fill("E2E Forensic Investigator");
   await page.locator("#auth-email").fill(uniqueEmail);
   await page.locator("#auth-password").fill(password);
+
+  const signUpSubmitBtn = page.getByTestId("auth-credentials-submit-button");
+  await expect(signUpSubmitBtn).toBeDisabled();
+
+  // Complete the Turnstile widget challenge -> button becomes enabled
+  await page.getByTestId("mock-turnstile-challenge").click();
+  await expect(signUpSubmitBtn).toBeEnabled();
+
+  // Click submit -> sends 5-minute OTP code and transitions to OTP confirmation screen
+  const firstOtpResponsePromise = page.waitForResponse(
+    (res) =>
+      res.url().includes("/api/auth/email-otp/send") &&
+      res.request().method() === "POST",
+  );
+  await signUpSubmitBtn.click();
+  const firstOtpResponse = await firstOtpResponsePromise;
+  expect(firstOtpResponse.status()).toBe(200);
+  const firstOtpData = (await firstOtpResponse.json()) as {
+    ok: boolean;
+    ttlSeconds: number;
+    devTestOtpCode: string;
+  };
+  expect(firstOtpData.ok).toBe(true);
+  expect(firstOtpData.ttlSeconds).toBe(300);
+  expect(firstOtpData.devTestOtpCode).toMatch(/^\d{6}$/);
+
+  await expect(page.getByTestId("auth-otp-countdown")).toBeVisible();
+  await expect(page.getByTestId("auth-otp-verify-button")).toBeDisabled();
+
+  // 3. Test Resend new code (5m): invalidates previous code and issues a new 6-digit code
+  const resendOtpResponsePromise = page.waitForResponse(
+    (res) =>
+      res.url().includes("/api/auth/email-otp/send") &&
+      res.request().method() === "POST",
+  );
+  await page.getByTestId("auth-otp-resend-button").click();
+  const resendOtpResponse = await resendOtpResponsePromise;
+  expect(resendOtpResponse.status()).toBe(200);
+  const resendOtpData = (await resendOtpResponse.json()) as {
+    devTestOtpCode: string;
+  };
+  expect(resendOtpData.devTestOtpCode).toMatch(/^\d{6}$/);
+
+  if (firstOtpData.devTestOtpCode !== resendOtpData.devTestOtpCode) {
+    await page
+      .getByTestId("auth-otp-code-input")
+      .fill(firstOtpData.devTestOtpCode);
+    await page.getByTestId("auth-otp-verify-button").click();
+    await expect(page.getByText(/invalid verification code/i)).toBeVisible();
+  }
+
   await page
-    .getByRole("button", { name: /create workspace & account/i })
-    .click();
+    .getByTestId("auth-otp-code-input")
+    .fill(resendOtpData.devTestOtpCode);
+  await expect(page.getByTestId("auth-otp-verify-button")).toBeEnabled();
+  await page.getByTestId("auth-otp-verify-button").click();
 
   await expect(page).toHaveURL(/\/workspace$/, { timeout: 15_000 });
   await expect(page.getByTestId("workspace-heading")).toContainText(
@@ -75,18 +170,40 @@ test("completes sign-up, automatic workspace provisioning, sign-out, and sign-in
     uniqueEmail,
   );
 
-  // 3. Visiting /sign-in while already authenticated redirects back to /workspace
+  // 4. Visiting /sign-in while already authenticated redirects back to /workspace
   await page.goto("/sign-in");
   await expect(page).toHaveURL(/\/workspace$/, { timeout: 15_000 });
 
-  // 4. Sign out -> redirects to /sign-in
+  // 5. Sign out -> redirects to /sign-in
   await page.getByTestId("sign-out-button").click();
   await expect(page).toHaveURL(/\/sign-in$/, { timeout: 15_000 });
 
-  // 5. Sign back in with the same credentials -> redirects to /workspace
+  // 6. Sign back in: verify Sign In button is disabled until Turnstile passes, then requires 5m Email OTP
   await page.locator("#auth-email").fill(uniqueEmail);
   await page.locator("#auth-password").fill(password);
-  await page.getByRole("button", { name: /sign in to workspace/i }).click();
+
+  const signInSubmitBtn = page.getByTestId("auth-credentials-submit-button");
+  await expect(signInSubmitBtn).toBeDisabled();
+
+  await page.getByTestId("mock-turnstile-challenge").click();
+  await expect(signInSubmitBtn).toBeEnabled();
+
+  const signInOtpResponsePromise = page.waitForResponse(
+    (res) =>
+      res.url().includes("/api/auth/email-otp/send") &&
+      res.request().method() === "POST",
+  );
+  await signInSubmitBtn.click();
+  const signInOtpResponse = await signInOtpResponsePromise;
+  expect(signInOtpResponse.status()).toBe(200);
+  const signInOtpData = (await signInOtpResponse.json()) as {
+    devTestOtpCode: string;
+  };
+
+  await page
+    .getByTestId("auth-otp-code-input")
+    .fill(signInOtpData.devTestOtpCode);
+  await page.getByTestId("auth-otp-verify-button").click();
 
   await expect(page).toHaveURL(/\/workspace$/, { timeout: 15_000 });
   await expect(page.getByTestId("workspace-heading")).toContainText(
@@ -98,6 +215,8 @@ test("shows honest empty state on dashboard, starts a scan, views scan detail, a
   page,
 }) => {
   test.setTimeout(60_000);
+  await installTurnstileWidgetStub(page);
+
   const uniqueEmail = `e2e-dashboard-${Date.now()}@mortem.test`;
   const password = "e2e-dashboard-password-99";
 
@@ -115,15 +234,32 @@ test("shows honest empty state on dashboard, starts a scan, views scan detail, a
     "Landing page (Mobile 390x844)",
   );
 
-  // 2. Sign up and navigate to /dashboard
+  // 2. Sign up with Turnstile + 5m OTP and navigate to /dashboard
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/sign-up?next=%2Fdashboard");
   await page.locator("#auth-name").fill("Dr. Ada Diagnostic");
   await page.locator("#auth-email").fill(uniqueEmail);
   await page.locator("#auth-password").fill(password);
-  await page
-    .getByRole("button", { name: /create workspace & account/i })
-    .click();
+
+  await expect(
+    page.getByTestId("auth-credentials-submit-button"),
+  ).toBeDisabled();
+  await page.getByTestId("mock-turnstile-challenge").click();
+  await expect(
+    page.getByTestId("auth-credentials-submit-button"),
+  ).toBeEnabled();
+
+  const otpResPromise = page.waitForResponse(
+    (res) =>
+      res.url().includes("/api/auth/email-otp/send") &&
+      res.request().method() === "POST",
+  );
+  await page.getByTestId("auth-credentials-submit-button").click();
+  const otpRes = await otpResPromise;
+  const otpPayload = (await otpRes.json()) as { devTestOtpCode: string };
+
+  await page.getByTestId("auth-otp-code-input").fill(otpPayload.devTestOtpCode);
+  await page.getByTestId("auth-otp-verify-button").click();
 
   await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
   await expect(page.getByTestId("dashboard-heading")).toHaveText(

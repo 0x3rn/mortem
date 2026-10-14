@@ -4,7 +4,32 @@ import { getRequestAuth } from "@/lib/auth";
 
 async function handleAuthRequest(request: Request): Promise<Response> {
   try {
-    const { auth } = await getRequestAuth(request);
+    const { auth, env } = await getRequestAuth(request);
+    const pathname = new URL(request.url).pathname;
+    const isTestEnv = env.ENVIRONMENT === "test";
+    const turnstileSecret = (
+      env.TURNSTILE_SECRET_KEY ??
+      (isTestEnv ? "" : process.env.TURNSTILE_SECRET_KEY) ??
+      ""
+    ).trim();
+
+    if (
+      request.method.toUpperCase() === "POST" &&
+      turnstileSecret &&
+      (pathname.endsWith("/sign-in/email") ||
+        pathname.endsWith("/sign-up/email"))
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "otp_required",
+          error:
+            "Cloudflare Turnstile verification and a 5-minute email confirmation code are required.",
+        },
+        { status: 403 },
+      );
+    }
+
     return await auth.handler(request);
   } catch (error) {
     if (error instanceof PlatformBindingError) {
