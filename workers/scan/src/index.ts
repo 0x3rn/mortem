@@ -12,6 +12,7 @@ import {
   isAllowedScanMethod,
   normalizeUrlInput,
   persistDiscoveredPagesInD1,
+  persistPageCaptureEvidenceToR2AndD1,
   recordCapturedPageInD1,
   requireScanWorkerBindings,
   type BrowserBindingLike,
@@ -518,6 +519,8 @@ const worker = {
                   let lastCaptureStatus: string = "captured";
                   let lastStatusCode: number | null = 200;
                   let anyNetworkIdleTimedOut = false;
+                  let totalEvidenceArtifacts = 0;
+                  let totalR2BytesWritten = 0;
 
                   for (let idx = 0; idx < pendingPages.length; idx += 1) {
                     const targetPage = pendingPages[idx]!;
@@ -571,6 +574,22 @@ const worker = {
                       continue;
                     }
 
+                    if (env.EVIDENCE) {
+                      const persistedEvidence =
+                        await persistPageCaptureEvidenceToR2AndD1({
+                          d1: ctx.d1,
+                          r2: env.EVIDENCE,
+                          scanId: ctx.scanId,
+                          pageId,
+                          capture,
+                          nowMs: ctx.nowMs,
+                        });
+                      totalEvidenceArtifacts +=
+                        persistedEvidence.artifacts.length;
+                      totalR2BytesWritten +=
+                        persistedEvidence.totalBytesWritten;
+                    }
+
                     capturedCount += 1;
                   }
 
@@ -604,6 +623,8 @@ const worker = {
                       captureStatus: lastCaptureStatus,
                       statusCode: lastStatusCode,
                       networkIdleTimedOut: anyNetworkIdleTimedOut,
+                      evidenceArtifactsWritten: totalEvidenceArtifacts,
+                      r2BytesWritten: totalR2BytesWritten,
                     },
                   };
                 },

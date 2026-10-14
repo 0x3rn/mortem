@@ -64,6 +64,16 @@ export interface R2PutOptionsLike {
   customMetadata?: Record<string, string>;
 }
 
+export interface R2ObjectBodyLike extends R2ObjectMetaLike {
+  body?: ReadableStream<Uint8Array>;
+  httpMetadata?: {
+    contentType?: string;
+  };
+  customMetadata?: Record<string, string>;
+  arrayBuffer(): Promise<ArrayBuffer>;
+  text?(): Promise<string>;
+}
+
 export interface R2BucketLike {
   put(
     key: string,
@@ -71,6 +81,7 @@ export interface R2BucketLike {
     options?: R2PutOptionsLike,
   ): Promise<R2ObjectMetaLike | null>;
   head(key: string): Promise<R2ObjectMetaLike | null>;
+  get?(key: string): Promise<R2ObjectBodyLike | null>;
 }
 
 export interface QueueLike<T = unknown> {

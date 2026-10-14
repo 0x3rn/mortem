@@ -3,9 +3,12 @@ import { join } from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import {
   PlatformBindingError,
+  listScanEvidenceArtifactsInD1,
+  verifyScanEvidenceCompletenessInD1,
   type D1BoundStatementLike,
   type D1DatabaseLike,
   type D1ExecResultLike,
+  type R2BucketLike,
 } from "@mortem/core";
 import { describe, expect, it, vi } from "vitest";
 import worker, { type QueueBatch, type ScanQueueMessage } from "./index";
@@ -995,7 +998,23 @@ describe("@mortem/scan-worker handlers", () => {
       }),
     ]);
 
-    // 2. Run capturing stage across all 4 discovered pages
+    // 2. Run capturing stage across all 4 discovered pages and persist raw evidence to R2 + D1 (THE-178)
+    const r2Objects = new Map<string, number>();
+    const r2Bucket: R2BucketLike = {
+      async put(key, value) {
+        const size =
+          typeof value === "string"
+            ? Buffer.byteLength(value)
+            : value.byteLength;
+        r2Objects.set(key, size);
+        return { key, size };
+      },
+      async head(key) {
+        const size = r2Objects.get(key);
+        return size !== undefined ? { key, size } : null;
+      },
+    };
+
     const ackCapture = vi.fn();
     await worker.queue(
       {
@@ -1012,6 +1031,7 @@ describe("@mortem/scan-worker handlers", () => {
       {
         ENVIRONMENT: "test",
         DB: d1,
+        EVIDENCE: r2Bucket,
         SCAN_QUEUE: {
           send: async (msg: ScanQueueMessage) => {
             enqueuedMessages.push(msg);
@@ -1095,5 +1115,16 @@ describe("@mortem/scan-worker handlers", () => {
       "contact",
       "product",
     ]);
+
+    const artifacts = await listScanEvidenceArtifactsInD1(d1, scanId);
+    // 4 pages * 6 core artifacts (html, headers, screenshot_desktop, screenshot_mobile, network_log, console_log) = 24
+    expect(artifacts).toHaveLength(24);
+    const completeness = await verifyScanEvidenceCompletenessInD1(
+      d1,
+      scanId,
+      r2Bucket,
+    );
+    expect(completeness.complete).toBe(true);
+    expect(completeness.violations).toHaveLength(0);
   });
 });
