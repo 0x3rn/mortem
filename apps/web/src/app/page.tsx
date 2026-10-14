@@ -224,6 +224,12 @@ const PLANS = [
 export default function Home() {
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-xs focus:font-semibold focus:text-primary-foreground"
+      >
+        Skip to main content
+      </a>
       {/* Header */}
       <header className="border-b border-border/60">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
@@ -275,8 +281,14 @@ export default function Home() {
               Sign in
             </Link>
             <Link
-              href="/workspace"
+              href="/dashboard"
               className="hidden rounded-md border border-border bg-card px-3.5 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-accent sm:inline-block"
+            >
+              Dashboard
+            </Link>
+            <Link
+              href="/workspace"
+              className="hidden rounded-md border border-border bg-card px-3.5 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-accent lg:inline-block"
             >
               Workspace
             </Link>
@@ -290,433 +302,437 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Hero with immediate URL intake */}
-      <section className="mx-auto max-w-6xl px-6 pt-16 pb-20 text-center sm:pt-24 sm:pb-24">
-        <p className="text-xs font-semibold tracking-widest text-primary uppercase sm:text-sm">
-          Multi-Page Website Autopsy · Desktop &amp; Mobile Browser Capture
-        </p>
-        <h1 className="mx-auto mt-4 max-w-4xl text-4xl font-extrabold tracking-tight sm:text-6xl">
-          Find out what is quietly killing your website&apos;s traffic and
-          conversions.
-        </h1>
-        <p className="mx-auto mt-6 max-w-2xl text-base text-muted-foreground sm:text-lg">
-          Mortem crawls your highest-intent pages in a real desktop and mobile
-          browser, runs deterministic checks across seven clinical categories,
-          and hands you an evidence-backed autopsy report with stack-aware
-          fixes. No vague advice. No hallucinated metrics.
-        </p>
+      <main id="main-content">
+        {/* Hero with immediate URL intake */}
+        <section className="mx-auto max-w-6xl px-6 pt-16 pb-20 text-center sm:pt-24 sm:pb-24">
+          <p className="text-xs font-semibold tracking-widest text-primary uppercase sm:text-sm">
+            Multi-Page Website Autopsy · Desktop &amp; Mobile Browser Capture
+          </p>
+          <h1 className="mx-auto mt-4 max-w-4xl text-4xl font-extrabold tracking-tight sm:text-6xl">
+            Find out what is quietly killing your website&apos;s traffic and
+            conversions.
+          </h1>
+          <p className="mx-auto mt-6 max-w-2xl text-base text-muted-foreground sm:text-lg">
+            Mortem crawls your highest-intent pages in a real desktop and mobile
+            browser, runs deterministic checks across seven clinical categories,
+            and hands you an evidence-backed autopsy report with stack-aware
+            fixes. No vague advice. No hallucinated metrics.
+          </p>
 
-        <div className="mt-10">
-          <ExamineForm id="hero-examine" buttonLabel="Examine website" />
-        </div>
-
-        <div className="mx-auto mt-6 flex max-w-2xl flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
-          <span>✓ Crawls homepage, pricing, product &amp; signup pages</span>
-          <span>✓ Real Desktop (1440×900) &amp; Mobile (390×844) capture</span>
-          <span>✓ Every finding backed by DOM &amp; screenshot proof</span>
-        </div>
-      </section>
-
-      {/* Sample Autopsy Report Specimen */}
-      <section
-        id="specimen"
-        className="border-t border-border bg-muted/30"
-        aria-labelledby="specimen-heading"
-      >
-        <div className="mx-auto max-w-6xl px-6 py-20 sm:py-24">
-          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-            <div>
-              <p className="text-xs font-semibold tracking-widest text-primary uppercase">
-                Clinical Specimen · Sample Output
-              </p>
-              <h2
-                id="specimen-heading"
-                className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl"
-              >
-                See what an autopsy report actually contains.
-              </h2>
-            </div>
-            <p className="max-w-md text-sm text-muted-foreground">
-              Every finding pairs a deterministic measurement with visual or DOM
-              evidence, business impact, and exact remediation steps for your
-              detected stack.
-            </p>
+          <div className="mt-10">
+            <ExamineForm id="hero-examine" buttonLabel="Examine website" />
           </div>
 
-          <div className="mt-10 rounded-xl border border-border bg-card p-6 sm:p-8">
-            {/* Specimen Header Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-6">
+          <div className="mx-auto mt-6 flex max-w-2xl flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
+            <span>✓ Crawls homepage, pricing, product &amp; signup pages</span>
+            <span>
+              ✓ Real Desktop (1440×900) &amp; Mobile (390×844) capture
+            </span>
+            <span>✓ Every finding backed by DOM &amp; screenshot proof</span>
+          </div>
+        </section>
+
+        {/* Sample Autopsy Report Specimen */}
+        <section
+          id="specimen"
+          className="border-t border-border bg-muted/30"
+          aria-labelledby="specimen-heading"
+        >
+          <div className="mx-auto max-w-6xl px-6 py-20 sm:py-24">
+            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
               <div>
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <span className="rounded bg-primary/20 px-2.5 py-0.5 text-xs font-semibold text-foreground">
-                    CASE #MRT-0419
-                  </span>
-                  <span className="text-sm font-semibold text-foreground">
-                    https://acme-cloud.io
-                  </span>
-                  <span className="rounded border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                    Stack detected: Next.js
-                  </span>
-                </div>
-                <p className="mt-1.5 text-xs text-muted-foreground">
-                  5 pages examined (/, /pricing, /features, /contact, /signup) ·
-                  Desktop 1440×900 &amp; Mobile 390×844 · Scoring v1.0.0
+                <p className="text-xs font-semibold tracking-widest text-primary uppercase">
+                  Clinical Specimen · Sample Output
                 </p>
+                <h2
+                  id="specimen-heading"
+                  className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl"
+                >
+                  See what an autopsy report actually contains.
+                </h2>
               </div>
-              <div className="flex items-center gap-4">
-                <div className="text-right">
-                  <p className="text-xs tracking-wider text-muted-foreground uppercase">
-                    Overall Health Score
-                  </p>
-                  <p className="font-display text-3xl font-extrabold text-foreground">
-                    61{" "}
-                    <span className="text-base font-normal text-muted-foreground">
-                      / 100 · Guarded
-                    </span>
-                  </p>
-                </div>
-              </div>
+              <p className="max-w-md text-sm text-muted-foreground">
+                Every finding pairs a deterministic measurement with visual or
+                DOM evidence, business impact, and exact remediation steps for
+                your detected stack.
+              </p>
             </div>
 
-            {/* Specimen Body: Left = 7 Category Scores, Right = 2 Sample Findings */}
-            <div className="mt-8 grid gap-8 lg:grid-cols-12">
-              <div className="lg:col-span-5">
-                <h3 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase">
-                  7 Weighted Category Scores
-                </h3>
-                <div className="mt-4 space-y-3.5">
-                  {SPECIMEN_CATEGORIES.map((cat) => (
-                    <div
-                      key={cat.name}
-                      className="rounded-lg border border-border bg-background/60 p-3.5"
-                    >
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-semibold text-foreground">
-                          {cat.name}{" "}
-                          <span className="text-xs font-normal text-muted-foreground">
-                            ({cat.weight})
-                          </span>
-                        </span>
-                        <span className="font-display font-bold text-foreground">
-                          {cat.score}/100{" "}
-                          <span className="ml-1 text-xs font-normal text-muted-foreground">
-                            · {cat.status}
-                          </span>
-                        </span>
-                      </div>
-                      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                        <div
-                          className="h-full rounded-full bg-primary"
-                          style={{ width: `${cat.score}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="lg:col-span-7">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase">
-                    Fix First · Ranked by Severity × Impact ÷ Effort
-                  </h3>
-                  <span className="text-xs text-muted-foreground">
-                    Showing 2 of 14 findings
-                  </span>
-                </div>
-                <div className="mt-4 space-y-4">
-                  {SPECIMEN_FINDINGS.map((finding) => (
-                    <div
-                      key={finding.id}
-                      className="rounded-lg border border-border bg-background/60 p-5"
-                    >
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <span className="font-mono font-semibold text-foreground">
-                          {finding.id}
-                        </span>
-                        <span className="rounded bg-primary px-2 py-0.5 font-semibold text-primary-foreground">
-                          {finding.severity}
-                        </span>
-                        <span className="rounded border border-border bg-card px-2 py-0.5 text-muted-foreground">
-                          {finding.effort}
-                        </span>
-                        <span className="rounded border border-border bg-card px-2 py-0.5 text-muted-foreground">
-                          Owner: {finding.role}
-                        </span>
-                        <span className="ml-auto text-muted-foreground">
-                          {finding.page}
-                        </span>
-                      </div>
-
-                      <h4 className="mt-3 text-base font-semibold text-foreground">
-                        {finding.title}
-                      </h4>
-
-                      <dl className="mt-3 space-y-2.5 text-xs leading-relaxed">
-                        <div className="rounded border border-border/80 bg-muted/60 p-3">
-                          <dt className="font-semibold text-foreground">
-                            Measured Evidence
-                          </dt>
-                          <dd className="mt-1 text-muted-foreground">
-                            {finding.evidence}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="inline font-semibold text-foreground">
-                            Why it matters:{" "}
-                          </dt>
-                          <dd className="inline text-muted-foreground">
-                            {finding.impact}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="inline font-semibold text-foreground">
-                            Recommended fix:{" "}
-                          </dt>
-                          <dd className="inline text-muted-foreground">
-                            {finding.fix}
-                          </dd>
-                        </div>
-                      </dl>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Seven Examinations */}
-      <section id="examinations" className="border-t border-border">
-        <div className="mx-auto max-w-6xl px-6 py-24">
-          <p className="text-xs font-semibold tracking-widest text-primary uppercase">
-            Diagnostic Coverage
-          </p>
-          <h2 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
-            Seven examinations. Every cause of death accounted for.
-          </h2>
-          <p className="mt-4 max-w-2xl text-muted-foreground">
-            Every autopsy scores the seven systems that decide whether a website
-            earns traffic, builds trust, and converts visitors. Each check has a
-            versioned rule ID and cites concrete evidence — never guessed, never
-            invented.
-          </p>
-          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {EXAMINATIONS.map((item) => (
-              <div
-                key={item.code}
-                className="flex flex-col justify-between rounded-lg border border-border bg-card p-6"
-              >
+            <div className="mt-10 rounded-xl border border-border bg-card p-6 sm:p-8">
+              {/* Specimen Header Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-6">
                 <div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-mono font-semibold text-primary">
-                      {item.code}
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <span className="rounded bg-primary/20 px-2.5 py-0.5 text-xs font-semibold text-foreground">
+                      CASE #MRT-0419
                     </span>
-                    <span className="rounded border border-border bg-muted px-2 py-0.5 text-muted-foreground">
-                      {item.weight}
+                    <span className="text-sm font-semibold text-foreground">
+                      https://acme-cloud.io
+                    </span>
+                    <span className="rounded border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                      Stack detected: Next.js
                     </span>
                   </div>
-                  <h3 className="mt-3 text-lg font-semibold">{item.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    5 pages examined (/, /pricing, /features, /contact, /signup)
+                    · Desktop 1440×900 &amp; Mobile 390×844 · Scoring v1.0.0
+                  </p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <p className="text-xs tracking-wider text-muted-foreground uppercase">
+                      Overall Health Score
+                    </p>
+                    <p className="font-display text-3xl font-extrabold text-foreground">
+                      61{" "}
+                      <span className="text-base font-normal text-muted-foreground">
+                        / 100 · Guarded
+                      </span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Specimen Body: Left = 7 Category Scores, Right = 2 Sample Findings */}
+              <div className="mt-8 grid gap-8 lg:grid-cols-12">
+                <div className="lg:col-span-5">
+                  <h3 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase">
+                    7 Weighted Category Scores
+                  </h3>
+                  <div className="mt-4 space-y-3.5">
+                    {SPECIMEN_CATEGORIES.map((cat) => (
+                      <div
+                        key={cat.name}
+                        className="rounded-lg border border-border bg-background/60 p-3.5"
+                      >
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-semibold text-foreground">
+                            {cat.name}{" "}
+                            <span className="text-xs font-normal text-muted-foreground">
+                              ({cat.weight})
+                            </span>
+                          </span>
+                          <span className="font-display font-bold text-foreground">
+                            {cat.score}/100{" "}
+                            <span className="ml-1 text-xs font-normal text-muted-foreground">
+                              · {cat.status}
+                            </span>
+                          </span>
+                        </div>
+                        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full bg-primary"
+                            style={{ width: `${cat.score}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="lg:col-span-7">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase">
+                      Fix First · Ranked by Severity × Impact ÷ Effort
+                    </h3>
+                    <span className="text-xs text-muted-foreground">
+                      Showing 2 of 14 findings
+                    </span>
+                  </div>
+                  <div className="mt-4 space-y-4">
+                    {SPECIMEN_FINDINGS.map((finding) => (
+                      <div
+                        key={finding.id}
+                        className="rounded-lg border border-border bg-background/60 p-5"
+                      >
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="font-mono font-semibold text-foreground">
+                            {finding.id}
+                          </span>
+                          <span className="rounded bg-primary px-2 py-0.5 font-semibold text-primary-foreground">
+                            {finding.severity}
+                          </span>
+                          <span className="rounded border border-border bg-card px-2 py-0.5 text-muted-foreground">
+                            {finding.effort}
+                          </span>
+                          <span className="rounded border border-border bg-card px-2 py-0.5 text-muted-foreground">
+                            Owner: {finding.role}
+                          </span>
+                          <span className="ml-auto text-muted-foreground">
+                            {finding.page}
+                          </span>
+                        </div>
+
+                        <h4 className="mt-3 text-base font-semibold text-foreground">
+                          {finding.title}
+                        </h4>
+
+                        <dl className="mt-3 space-y-2.5 text-xs leading-relaxed">
+                          <div className="rounded border border-border/80 bg-muted/60 p-3">
+                            <dt className="font-semibold text-foreground">
+                              Measured Evidence
+                            </dt>
+                            <dd className="mt-1 text-muted-foreground">
+                              {finding.evidence}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="inline font-semibold text-foreground">
+                              Why it matters:{" "}
+                            </dt>
+                            <dd className="inline text-muted-foreground">
+                              {finding.impact}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="inline font-semibold text-foreground">
+                              Recommended fix:{" "}
+                            </dt>
+                            <dd className="inline text-muted-foreground">
+                              {finding.fix}
+                            </dd>
+                          </div>
+                        </dl>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Seven Examinations */}
+        <section id="examinations" className="border-t border-border">
+          <div className="mx-auto max-w-6xl px-6 py-24">
+            <p className="text-xs font-semibold tracking-widest text-primary uppercase">
+              Diagnostic Coverage
+            </p>
+            <h2 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
+              Seven examinations. Every cause of death accounted for.
+            </h2>
+            <p className="mt-4 max-w-2xl text-muted-foreground">
+              Every autopsy scores the seven systems that decide whether a
+              website earns traffic, builds trust, and converts visitors. Each
+              check has a versioned rule ID and cites concrete evidence — never
+              guessed, never invented.
+            </p>
+            <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {EXAMINATIONS.map((item) => (
+                <div
+                  key={item.code}
+                  className="flex flex-col justify-between rounded-lg border border-border bg-card p-6"
+                >
+                  <div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-mono font-semibold text-primary">
+                        {item.code}
+                      </span>
+                      <span className="rounded border border-border bg-muted px-2 py-0.5 text-muted-foreground">
+                        {item.weight}
+                      </span>
+                    </div>
+                    <h3 className="mt-3 text-lg font-semibold">{item.title}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                      {item.body}
+                    </p>
+                  </div>
+                  <p className="mt-4 border-t border-border/60 pt-3 text-xs text-muted-foreground">
+                    {item.signals}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Why Mortem / Differentiation */}
+        <section id="why-mortem" className="border-t border-border bg-muted/40">
+          <div className="mx-auto max-w-6xl px-6 py-24">
+            <p className="text-xs font-semibold tracking-widest text-primary uppercase">
+              Why Mortem
+            </p>
+            <h2 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
+              Why a single-page Lighthouse score isn&apos;t enough.
+            </h2>
+            <p className="mt-4 max-w-2xl text-muted-foreground">
+              A site can score 95 in Lighthouse and still bleed revenue because
+              its pricing CTA sits below the mobile fold, its signup form has 11
+              required fields, or its canonical tags block indexing.
+            </p>
+            <div className="mt-12 grid gap-8 md:grid-cols-3">
+              {DIFFERENTIATORS.map((item) => (
+                <div
+                  key={item.title}
+                  className="rounded-lg border border-border bg-card p-6"
+                >
+                  <p className="text-xs font-semibold tracking-wider text-primary uppercase">
+                    {item.eyebrow}
+                  </p>
+                  <h3 className="mt-2 text-xl font-semibold">{item.title}</h3>
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
                     {item.body}
                   </p>
                 </div>
-                <p className="mt-4 border-t border-border/60 pt-3 text-xs text-muted-foreground">
-                  {item.signals}
-                </p>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Why Mortem / Differentiation */}
-      <section id="why-mortem" className="border-t border-border bg-muted/40">
-        <div className="mx-auto max-w-6xl px-6 py-24">
-          <p className="text-xs font-semibold tracking-widest text-primary uppercase">
-            Why Mortem
-          </p>
-          <h2 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
-            Why a single-page Lighthouse score isn&apos;t enough.
-          </h2>
-          <p className="mt-4 max-w-2xl text-muted-foreground">
-            A site can score 95 in Lighthouse and still bleed revenue because
-            its pricing CTA sits below the mobile fold, its signup form has 11
-            required fields, or its canonical tags block indexing.
-          </p>
-          <div className="mt-12 grid gap-8 md:grid-cols-3">
-            {DIFFERENTIATORS.map((item) => (
-              <div
-                key={item.title}
-                className="rounded-lg border border-border bg-card p-6"
-              >
-                <p className="text-xs font-semibold tracking-wider text-primary uppercase">
-                  {item.eyebrow}
-                </p>
-                <h3 className="mt-2 text-xl font-semibold">{item.title}</h3>
-                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                  {item.body}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section id="how" className="border-t border-border">
-        <div className="mx-auto max-w-6xl px-6 py-24">
-          <p className="text-xs font-semibold tracking-widest text-primary uppercase">
-            Examination Protocol
-          </p>
-          <h2 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
-            How an autopsy works
-          </h2>
-          <div className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-            {STEPS.map((step) => (
-              <div
-                key={step.number}
-                className="rounded-lg border border-border bg-card/50 p-6"
-              >
-                <span className="font-display text-3xl font-bold text-primary">
-                  {step.number}
-                </span>
-                <h3 className="mt-4 text-lg font-semibold">{step.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  {step.body}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Built for Agencies & Consultants */}
-      <section id="agencies" className="border-t border-border bg-muted/40">
-        <div className="mx-auto max-w-6xl px-6 py-24">
-          <div className="max-w-2xl">
+        {/* How it works */}
+        <section id="how" className="border-t border-border">
+          <div className="mx-auto max-w-6xl px-6 py-24">
             <p className="text-xs font-semibold tracking-widest text-primary uppercase">
-              Agency &amp; Consultant Workbench
+              Examination Protocol
             </p>
             <h2 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
-              Turn every website audit into a signed client engagement.
+              How an autopsy works
             </h2>
-            <p className="mt-4 text-muted-foreground">
-              Stop spending four hours screenshotting issues and pasting them
-              into slide decks. Mortem packages the proof, applies your brand,
-              and generates a scoped remediation proposal tied directly to the
-              scan&apos;s findings.
-            </p>
-          </div>
-          <div className="mt-12 grid gap-6 md:grid-cols-3">
-            {AGENCY_FEATURES.map((feat) => (
-              <div
-                key={feat.title}
-                className="rounded-lg border border-border bg-card p-6"
-              >
-                <h3 className="text-lg font-semibold">{feat.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  {feat.body}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing */}
-      <section id="pricing" className="border-t border-border">
-        <div className="mx-auto max-w-6xl px-6 py-24">
-          <div className="text-center">
-            <p className="text-xs font-semibold tracking-widest text-primary uppercase">
-              Transparent Pricing
-            </p>
-            <h2 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
-              Start with a free preview. Unlock one report or monitor every
-              site.
-            </h2>
-            <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">
-              Pay once when you only need a single full diagnosis, or subscribe
-              for scheduled re-scans, regression alerts, and agency
-              white-labeling.
-            </p>
-          </div>
-
-          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {PLANS.map((plan) => (
-              <div
-                key={plan.name}
-                className={`flex flex-col justify-between rounded-lg border p-6 text-left ${
-                  plan.highlight
-                    ? "border-primary bg-card ring-1 ring-primary"
-                    : "border-border bg-card"
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold">{plan.name}</h3>
-                    {plan.highlight ? (
-                      <span className="rounded bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground">
-                        Most popular
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="mt-3 flex items-baseline gap-1.5">
-                    <span className="font-display text-3xl font-bold">
-                      {plan.price}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {plan.cadence}
-                    </span>
-                  </div>
-                  <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-                    {plan.description}
+            <div className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+              {STEPS.map((step) => (
+                <div
+                  key={step.number}
+                  className="rounded-lg border border-border bg-card/50 p-6"
+                >
+                  <span className="font-display text-3xl font-bold text-primary">
+                    {step.number}
+                  </span>
+                  <h3 className="mt-4 text-lg font-semibold">{step.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    {step.body}
                   </p>
-                  <ul className="mt-5 space-y-2.5 border-t border-border/60 pt-4 text-xs text-foreground">
-                    {plan.features.map((feature) => (
-                      <li key={feature} className="flex items-start gap-2">
-                        <span className="text-primary">✓</span>
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
                 </div>
-                <a
-                  href="#examine"
-                  className={`mt-6 block rounded-md px-4 py-2.5 text-center text-xs font-semibold transition-colors ${
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Built for Agencies & Consultants */}
+        <section id="agencies" className="border-t border-border bg-muted/40">
+          <div className="mx-auto max-w-6xl px-6 py-24">
+            <div className="max-w-2xl">
+              <p className="text-xs font-semibold tracking-widest text-primary uppercase">
+                Agency &amp; Consultant Workbench
+              </p>
+              <h2 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
+                Turn every website audit into a signed client engagement.
+              </h2>
+              <p className="mt-4 text-muted-foreground">
+                Stop spending four hours screenshotting issues and pasting them
+                into slide decks. Mortem packages the proof, applies your brand,
+                and generates a scoped remediation proposal tied directly to the
+                scan&apos;s findings.
+              </p>
+            </div>
+            <div className="mt-12 grid gap-6 md:grid-cols-3">
+              {AGENCY_FEATURES.map((feat) => (
+                <div
+                  key={feat.title}
+                  className="rounded-lg border border-border bg-card p-6"
+                >
+                  <h3 className="text-lg font-semibold">{feat.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    {feat.body}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Pricing */}
+        <section id="pricing" className="border-t border-border">
+          <div className="mx-auto max-w-6xl px-6 py-24">
+            <div className="text-center">
+              <p className="text-xs font-semibold tracking-widest text-primary uppercase">
+                Transparent Pricing
+              </p>
+              <h2 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
+                Start with a free preview. Unlock one report or monitor every
+                site.
+              </h2>
+              <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">
+                Pay once when you only need a single full diagnosis, or
+                subscribe for scheduled re-scans, regression alerts, and agency
+                white-labeling.
+              </p>
+            </div>
+
+            <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              {PLANS.map((plan) => (
+                <div
+                  key={plan.name}
+                  className={`flex flex-col justify-between rounded-lg border p-6 text-left ${
                     plan.highlight
-                      ? "bg-primary text-primary-foreground hover:bg-destructive"
-                      : "border border-border bg-background/60 text-foreground hover:bg-accent"
+                      ? "border-primary bg-card ring-1 ring-primary"
+                      : "border-border bg-card"
                   }`}
                 >
-                  Examine a site
-                </a>
-              </div>
-            ))}
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold">{plan.name}</h3>
+                      {plan.highlight ? (
+                        <span className="rounded bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground">
+                          Most popular
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-3 flex items-baseline gap-1.5">
+                      <span className="font-display text-3xl font-bold">
+                        {plan.price}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {plan.cadence}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                      {plan.description}
+                    </p>
+                    <ul className="mt-5 space-y-2.5 border-t border-border/60 pt-4 text-xs text-foreground">
+                      {plan.features.map((feature) => (
+                        <li key={feature} className="flex items-start gap-2">
+                          <span className="text-primary">✓</span>
+                          <span>{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <a
+                    href="#examine"
+                    className={`mt-6 block rounded-md px-4 py-2.5 text-center text-xs font-semibold transition-colors ${
+                      plan.highlight
+                        ? "bg-primary text-primary-foreground hover:bg-destructive"
+                        : "border border-border bg-background/60 text-foreground hover:bg-accent"
+                    }`}
+                  >
+                    Examine a site
+                  </a>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Final CTA */}
-      <section id="examine" className="border-t border-border bg-muted/40">
-        <div className="mx-auto max-w-6xl px-6 py-24 text-center">
-          <p className="text-xs font-semibold tracking-widest text-primary uppercase">
-            Begin Examination
-          </p>
-          <h2 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
-            Ready to see what&apos;s hurting your website?
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
-            Enter your domain below to run a multi-page desktop and mobile
-            autopsy. Every finding comes with verifiable proof and prioritized
-            fix instructions.
-          </p>
-          <div className="mt-8">
-            <ExamineForm id="footer-examine" buttonLabel="Run autopsy" />
+        {/* Final CTA */}
+        <section id="examine" className="border-t border-border bg-muted/40">
+          <div className="mx-auto max-w-6xl px-6 py-24 text-center">
+            <p className="text-xs font-semibold tracking-widest text-primary uppercase">
+              Begin Examination
+            </p>
+            <h2 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
+              Ready to see what&apos;s hurting your website?
+            </h2>
+            <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
+              Enter your domain below to run a multi-page desktop and mobile
+              autopsy. Every finding comes with verifiable proof and prioritized
+              fix instructions.
+            </p>
+            <div className="mt-8">
+              <ExamineForm id="footer-examine" buttonLabel="Run autopsy" />
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </main>
 
       {/* Footer */}
       <footer className="border-t border-border">

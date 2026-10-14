@@ -26,6 +26,7 @@
     "test:e2e": "npm --workspace @mortem/web run test:e2e"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.51.1",
     "@types/node": "^20",
     "@types/react": "^19",

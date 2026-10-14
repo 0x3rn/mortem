@@ -2,6 +2,7 @@ import {
   PlatformBindingError,
   ScanIntakeError,
   WorkspaceAccessError,
+  listWorkspaceScans,
   requireWebBindings,
   requireWorkspaceAccess,
   submitScanIntake,
@@ -205,24 +206,13 @@ export async function GET(request: Request) {
       "viewer",
     );
 
-    const rowsResult = d1.prepare(
-      `SELECT id, workspace_id, site_id, target_url, normalized_url, status,
-              failure_class, failure_reason, scoring_version, started_at, completed_at, created_at, updated_at
-       FROM scans
-       WHERE workspace_id = ?
-       ORDER BY created_at DESC
-       LIMIT 50`,
-    );
-    const bound = rowsResult.bind(access.workspaceId);
-    const allRes = bound.all
-      ? await bound.all<Record<string, unknown>>()
-      : { success: true, results: [] };
+    const scans = await listWorkspaceScans(d1, access.workspaceId, 50);
 
     return NextResponse.json(
       {
         ok: true,
         workspaceId: access.workspaceId,
-        scans: allRes.results ?? [],
+        scans,
       },
       { status: 200 },
     );

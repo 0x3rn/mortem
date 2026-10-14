@@ -9,6 +9,7 @@ import type {
 } from "@mortem/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as authPost } from "../auth/[...all]/route";
+import { GET as getScanDetail } from "./[scanId]/route";
 import {
   GET as getScans,
   POST as postScans,
@@ -257,5 +258,100 @@ describe("POST /api/scans and GET /api/scans route handlers (THE-173)", () => {
       expect(body.code).toBe("ssrf_blocked");
     }
     expect(queuedMessages).toHaveLength(0);
+  });
+
+  it("loads scan lifecycle detail via GET /api/scans/[scanId] and enforces cross-workspace isolation (THE-174)", async () => {
+    const signUpAlice = await authPost(
+      new Request("http://localhost:3000/api/auth/sign-up/email", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Alice Investigator",
+          email: "alice@mortem.dev",
+          password: "alice-secure-password-123",
+        }),
+      }),
+    );
+    const aliceCookie = extractCookieHeader(signUpAlice);
+
+    const signUpBob = await authPost(
+      new Request("http://localhost:3000/api/auth/sign-up/email", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Bob Rival",
+          email: "bob@mortem.dev",
+          password: "bob-secure-password-123",
+        }),
+      }),
+    );
+    const bobCookie = extractCookieHeader(signUpBob);
+
+    const createRes = await postScans(
+      new Request("http://localhost:3000/api/scans", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: aliceCookie,
+        },
+        body: JSON.stringify({ url: "https://example.com/pricing" }),
+      }),
+    );
+    expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as {
+      ok: boolean;
+      scan: { scanId: string };
+    };
+    const scanId = created.scan.scanId;
+
+    // Alice can view her scan detail and recorded queued stage event
+    const aliceDetailRes = await getScanDetail(
+      new Request(`http://localhost:3000/api/scans/${scanId}`, {
+        headers: { cookie: aliceCookie },
+      }),
+      { params: Promise.resolve({ scanId }) },
+    );
+    expect(aliceDetailRes.status).toBe(200);
+    const aliceDetailPayload = (await aliceDetailRes.json()) as {
+      ok: boolean;
+      scanDetail: {
+        scan: {
+          id: string;
+          normalized_url: string;
+          status: string;
+          pages_discovered: number;
+          pages_captured: number;
+          overall_score: number | null;
+        };
+        events: { stage: string; message: string }[];
+      };
+    };
+    expect(aliceDetailPayload.scanDetail.scan.id).toBe(scanId);
+    expect(aliceDetailPayload.scanDetail.scan.normalized_url).toBe(
+      "https://example.com/pricing",
+    );
+    expect(aliceDetailPayload.scanDetail.scan.status).toBe("queued");
+    expect(aliceDetailPayload.scanDetail.scan.overall_score).toBeNull();
+    expect(aliceDetailPayload.scanDetail.events).toHaveLength(1);
+    expect(aliceDetailPayload.scanDetail.events[0]?.stage).toBe("queued");
+
+    // Bob's workspace history is empty and Bob gets 404 when requesting Alice's scanId
+    const bobHistoryRes = await getScans(
+      new Request("http://localhost:3000/api/scans", {
+        headers: { cookie: bobCookie },
+      }),
+    );
+    const bobHistory = (await bobHistoryRes.json()) as {
+      scans: unknown[];
+    };
+    expect(bobHistory.scans).toHaveLength(0);
+
+    const bobDetailRes = await getScanDetail(
+      new Request(`http://localhost:3000/api/scans/${scanId}`, {
+        headers: { cookie: bobCookie },
+      }),
+      { params: Promise.resolve({ scanId }) },
+    );
+    expect(bobDetailRes.status).toBe(404);
   });
 });

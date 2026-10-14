@@ -69,10 +69,10 @@
   --secondary: #3a2421;
   --secondary-foreground: #efe7da;
   --muted: #2a1a17;
-  --muted-foreground: #a89a8c;
+  --muted-foreground: #c2b5a7;
   --accent: #4a2e29;
   --accent-foreground: #efe7da;
-  --destructive: #b3402f;
+  --destructive: #8c1c13;
   --destructive-foreground: #efe7da;
   --border: #4a2e29;
   --input: #4a2e29;
@@ -80,7 +80,7 @@
   --chart-1: #8c1c13;
   --chart-2: #b3402f;
   --chart-3: #d98a6a;
-  --chart-4: #a89a8c;
+  --chart-4: #c2b5a7;
   --chart-5: #efe7da;
   --sidebar: #140d0c;
   --sidebar-foreground: #efe7da;
@@ -111,4 +111,9 @@
   h6 {
     font-family: var(--font-display);
   }
+}
+
+.text-primary,
+.text-destructive {
+  color: #f29a8a;
 }

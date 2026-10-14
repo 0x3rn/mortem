@@ -1,4 +1,26 @@
-import { expect, test } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
+import { expect, type Page, test } from "@playwright/test";
+
+async function assertZeroSeriousOrCriticalAxeViolations(
+  page: Page,
+  contextLabel: string,
+) {
+  const results = await new AxeBuilder({ page }).analyze();
+  const severeViolations = results.violations.filter(
+    (v) => v.impact === "serious" || v.impact === "critical",
+  );
+  expect(
+    severeViolations,
+    `Expected 0 serious/critical axe violations on ${contextLabel}, found: ${JSON.stringify(
+      severeViolations.map((v) => ({
+        id: v.id,
+        impact: v.impact,
+        description: v.description,
+        nodes: v.nodes.map((n) => n.html),
+      })),
+    )}`,
+  ).toEqual([]);
+}
 
 test("renders Mortem landing page and normalizes intake URL", async ({
   page,
@@ -69,5 +91,95 @@ test("completes sign-up, automatic workspace provisioning, sign-out, and sign-in
   await expect(page).toHaveURL(/\/workspace$/, { timeout: 15_000 });
   await expect(page.getByTestId("workspace-heading")).toContainText(
     "E2E Forensic Investigator's Workspace",
+  );
+});
+
+test("shows honest empty state on dashboard, starts a scan, views scan detail, and passes @axe-core/playwright on desktop and mobile (THE-174)", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const uniqueEmail = `e2e-dashboard-${Date.now()}@mortem.test`;
+  const password = "e2e-dashboard-password-99";
+
+  // 1. Desktop & Mobile accessibility check on public landing page
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  await assertZeroSeriousOrCriticalAxeViolations(
+    page,
+    "Landing page (Desktop 1440x900)",
+  );
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await assertZeroSeriousOrCriticalAxeViolations(
+    page,
+    "Landing page (Mobile 390x844)",
+  );
+
+  // 2. Sign up and navigate to /dashboard
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/sign-up?next=%2Fdashboard");
+  await page.locator("#auth-name").fill("Dr. Ada Diagnostic");
+  await page.locator("#auth-email").fill(uniqueEmail);
+  await page.locator("#auth-password").fill(password);
+  await page
+    .getByRole("button", { name: /create workspace & account/i })
+    .click();
+
+  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
+  await expect(page.getByTestId("dashboard-heading")).toHaveText(
+    "Start a website autopsy",
+  );
+
+  // 3. New user sees an honest empty state and zero scans
+  await expect(page.getByTestId("scan-history-empty")).toBeVisible();
+  await expect(page.getByTestId("metric-total-scans")).toHaveText("0");
+  await expect(page.getByTestId("metric-avg-score")).toHaveText("—");
+
+  // Run axe-core on empty dashboard (desktop & mobile)
+  await assertZeroSeriousOrCriticalAxeViolations(
+    page,
+    "Dashboard empty state (Desktop 1440x900)",
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await assertZeroSeriousOrCriticalAxeViolations(
+    page,
+    "Dashboard empty state (Mobile 390x844)",
+  );
+
+  // 4. Start a scan from the dashboard quick-scan form
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByTestId("empty-state-start-scan-button").click();
+  const dashboardInput = page.locator("#dashboard-examine-input");
+  await expect(dashboardInput).toBeFocused();
+  await dashboardInput.fill("example.com");
+  await page.getByRole("button", { name: "Start scan" }).click();
+
+  // 5. Verify scan appears in workspace history table and link to scan detail works
+  await expect(page.getByTestId("scan-history-table")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId("metric-total-scans")).toHaveText("1");
+  await expect(page.getByTestId("scan-history-table")).toContainText(
+    "https://example.com/",
+  );
+
+  await page.getByTestId("examine-created-scan-link").click();
+  await expect(page).toHaveURL(/\/scans\/scan_/, { timeout: 15_000 });
+  await expect(page.getByTestId("scan-detail-target-url")).toHaveText(
+    "https://example.com/",
+  );
+  await expect(page.getByTestId("scan-detail-status")).toHaveText(/queued/i);
+  await expect(page.getByTestId("scan-lifecycle-stepper")).toBeVisible();
+  await expect(page.getByTestId("scan-events-list")).toContainText("queued");
+
+  // 6. Run axe-core on scan detail view (desktop & mobile)
+  await assertZeroSeriousOrCriticalAxeViolations(
+    page,
+    "Scan detail page (Desktop 1440x900)",
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await assertZeroSeriousOrCriticalAxeViolations(
+    page,
+    "Scan detail page (Mobile 390x844)",
   );
 });
