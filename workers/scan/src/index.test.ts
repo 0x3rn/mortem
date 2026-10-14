@@ -732,4 +732,132 @@ describe("@mortem/scan-worker handlers", () => {
 
     expect(events.results?.map((e) => e.stage)).toEqual(["queued", "failed"]);
   });
+
+  it("executes the Browser Run capturing stage across desktop and mobile viewports, persisting D1 page rows and failing upstream_blocked when WAF challenges occur (THE-176)", async () => {
+    const d1 = createSqliteD1();
+    const { scanId, workspaceId, siteId } = await seedWorkspaceAndQueuedScan(
+      d1,
+      "scan_capture_blocked_01",
+      "https://protected-site.example.com/",
+    );
+
+    const enqueuedMessages: ScanQueueMessage[] = [];
+    const ack = vi.fn();
+    const retry = vi.fn();
+
+    await worker.queue(
+      {
+        queue: "mortem-scans",
+        messages: [
+          {
+            id: "msg_capture_1",
+            body: {
+              kind: "website_scan",
+              scanId,
+              workspaceId,
+              siteId,
+              targetUrl: "https://protected-site.example.com/",
+              stage: "capturing",
+              attempt: 1,
+              idempotencyKey: `${scanId}:capturing`,
+            },
+            ack,
+            retry,
+          },
+        ],
+      },
+      {
+        ENVIRONMENT: "test",
+        DB: d1,
+        SCAN_QUEUE: {
+          send: async (msg: ScanQueueMessage) => {
+            enqueuedMessages.push(msg);
+          },
+        },
+      },
+      {
+        now: () => 1_760_000_050_000,
+        browserLauncher: async () => ({
+          async newContext() {
+            return {
+              async newPage() {
+                const url = "https://protected-site.example.com/";
+                return {
+                  async addInitScript() {},
+                  async route() {},
+                  on() {},
+                  async goto() {
+                    const req = {
+                      url: () => url,
+                      method: () => "GET",
+                      resourceType: () => "document",
+                      isNavigationRequest: () => true,
+                      redirectedFrom: () => null,
+                    };
+                    return {
+                      url: () => url,
+                      status: () => 403,
+                      headers: () => ({ "cf-mitigated": "challenge" }),
+                      request: () => req,
+                    };
+                  },
+                  async waitForLoadState() {},
+                  async evaluate<R>() {
+                    return { ttfbMs: 40 } as unknown as R;
+                  },
+                  async content() {
+                    return "<html><head><title>Just a moment...</title></head><body>Challenge</body></html>";
+                  },
+                  async title() {
+                    return "Just a moment...";
+                  },
+                  url: () => url,
+                  async screenshot() {
+                    return new Uint8Array([137, 80, 78, 71]);
+                  },
+                  async close() {},
+                };
+              },
+              async close() {},
+            };
+          },
+          async close() {},
+        }),
+      },
+    );
+
+    expect(ack).toHaveBeenCalledOnce();
+    expect(retry).not.toHaveBeenCalled();
+    expect(enqueuedMessages).toHaveLength(0);
+
+    const scanRow = await d1
+      .prepare(
+        `SELECT status, failure_class, failure_reason FROM scans WHERE id = ?`,
+      )
+      .bind(scanId)
+      .first<{
+        status: string;
+        failure_class: string | null;
+        failure_reason: string | null;
+      }>();
+
+    expect(scanRow?.status).toBe("failed");
+    expect(scanRow?.failure_class).toBe("upstream_blocked");
+    expect(scanRow?.failure_reason).toContain("Cloudflare challenge");
+
+    const pageRow = await d1
+      .prepare(
+        `SELECT capture_status, status_code, failure_reason FROM pages WHERE scan_id = ?`,
+      )
+      .bind(scanId)
+      .first<{
+        capture_status: string;
+        status_code: number | null;
+        failure_reason: string | null;
+      }>();
+
+    expect(pageRow?.capture_status).toBe("skipped");
+    expect(pageRow?.status_code).toBe(403);
+    expect(pageRow?.failure_reason).toContain("Cloudflare challenge");
+  });
 });

@@ -95,6 +95,7 @@ export function normalizeUrlInput(raw: string): string | null {
 
 import { validateAndNormalizeIntakeUrl } from "./intake";
 
+export * from "./browser-capture";
 export * from "./cloudflare";
 export * from "./intake";
 export * from "./scan-history";

@@ -5,13 +5,17 @@ import {
   SCAN_STAGES,
   advanceScanStageInD1,
   buildSmokeArtifactKey,
+  capturePageAcrossViewports,
   computeRetryBackoffSeconds,
   handleDeadLetterScanMessageInD1,
   isAllowedScanMethod,
   normalizeUrlInput,
+  recordCapturedPageInD1,
   requireScanWorkerBindings,
   type BrowserBindingLike,
+  type BrowserLauncherFn,
   type MortemScanBindings,
+  type PlaywrightBrowserLike,
   type ScanFailureClass,
   type ScanPipelineQueueMessage,
   type ScanStage,
@@ -65,6 +69,7 @@ export type BrowserSmokeCaptureFn = (
 
 export interface QueueExecutionOptions {
   browserCapture?: BrowserSmokeCaptureFn;
+  browserLauncher?: BrowserLauncherFn;
   stageHandlers?: ScanStageHandlerMap;
   now?: () => number;
 }
@@ -82,6 +87,23 @@ export interface ScheduledRunSummary {
   environment: string;
   scheduledAtIso: string;
   status: "idle" | "dispatched";
+}
+
+export async function launchCloudflarePlaywrightBrowser(
+  browserBinding?: BrowserBindingLike,
+): Promise<PlaywrightBrowserLike> {
+  if (!browserBinding) {
+    throw new PlatformBindingError(
+      "MISSING_BINDING",
+      "BROWSER",
+      "Cloudflare Browser Rendering binding (env.BROWSER) is required to launch Playwright.",
+    );
+  }
+  const { launch } = await import("@cloudflare/playwright");
+  const browser = await launch(
+    browserBinding as unknown as Parameters<typeof launch>[0],
+  );
+  return browser as unknown as PlaywrightBrowserLike;
 }
 
 export async function captureWithCloudflareBrowserRun(
@@ -350,6 +372,70 @@ const worker = {
       }
 
       if (env.DB) {
+        const hasBrowserSupport = Boolean(
+          options.browserLauncher || env.BROWSER,
+        );
+        const stageHandlers: ScanStageHandlerMap = {
+          ...(hasBrowserSupport
+            ? {
+                capturing: async (ctx) => {
+                  const capture = await capturePageAcrossViewports({
+                    targetUrl: ctx.targetUrl,
+                    browserBinding: env.BROWSER,
+                    browserLauncher:
+                      options.browserLauncher ??
+                      launchCloudflarePlaywrightBrowser,
+                    now: options.now,
+                  });
+                  const { pageId } = await recordCapturedPageInD1({
+                    d1: ctx.d1,
+                    scanId: ctx.scanId,
+                    pageId: ctx.pageId,
+                    capture,
+                    nowMs: ctx.nowMs,
+                  });
+
+                  if (capture.captureStatus === "blocked") {
+                    return {
+                      outcome: "failed",
+                      failureClass: capture.failureClass ?? "upstream_blocked",
+                      failureReason:
+                        capture.failureReason ??
+                        `Target returned a WAF or bot challenge screen for ${ctx.targetUrl}`,
+                      pagesCaptured: 0,
+                      metadata: {
+                        pageId,
+                        captureStatus: capture.captureStatus,
+                        botProvider:
+                          capture.desktop.botChallenge.provider ??
+                          capture.mobile.botChallenge.provider,
+                      },
+                    };
+                  }
+
+                  return {
+                    outcome: "continue",
+                    pagesDiscovered: 1,
+                    pagesCaptured: 1,
+                    message:
+                      capture.captureStatus === "partial"
+                        ? `Captured desktop and mobile viewports at network-idle timeout mark (partial) for ${capture.finalUrl}`
+                        : `Captured desktop (1440x900) and mobile (390x844) evidence for ${capture.finalUrl}`,
+                    metadata: {
+                      pageId,
+                      captureStatus: capture.captureStatus,
+                      statusCode: capture.statusCode,
+                      networkIdleTimedOut:
+                        capture.desktop.networkIdleTimedOut ||
+                        capture.mobile.networkIdleTimedOut,
+                    },
+                  };
+                },
+              }
+            : {}),
+          ...options.stageHandlers,
+        };
+
         try {
           await advanceScanStageInD1({
             d1: env.DB,
@@ -361,7 +447,7 @@ const worker = {
               targetUrl: normalized,
               attempt,
             },
-            stageHandlers: options.stageHandlers,
+            stageHandlers,
             now: options.now,
           });
         } catch (err) {
