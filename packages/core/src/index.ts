@@ -42,8 +42,9 @@ export const SCAN_STAGES = [
   "capturing",
   "checking",
   "scoring",
-  "narrating",
-  "completed",
+  "generating_report",
+  "complete",
+  "partial",
   "failed",
 ] as const;
 
@@ -127,4 +128,5 @@ export function normalizeUrlInput(raw: string): string | null {
 
 export * from "./cloudflare";
 export * from "./schema/auth";
+export * from "./schema/scans";
 export * from "./workspaces";

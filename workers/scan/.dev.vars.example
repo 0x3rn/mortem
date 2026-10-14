@@ -1,0 +1,5 @@
+# Cloudflare Wrangler local secrets for `workers/scan` (`mortem-scan` Worker)
+# Copy this file to `workers/scan/.dev.vars` (gitignored).
+# In production/staging, set these with `npx wrangler secret put <NAME> --config workers/scan/wrangler.jsonc`.
+
+ENVIRONMENT="development"

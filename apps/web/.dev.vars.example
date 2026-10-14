@@ -1,0 +1,9 @@
+# Cloudflare Wrangler local secrets for `apps/web` (`mortem` Worker)
+# Copy this file to `apps/web/.dev.vars` (gitignored).
+# In production/staging, set these with `npx wrangler secret put <NAME> --config apps/web/wrangler.jsonc`.
+
+MORTEM_ADMIN_SECRET="replace-with-32-byte-hex-admin-secret"
+BETTER_AUTH_SECRET="replace-with-32-byte-hex-better-auth-secret"
+BETTER_AUTH_URL="http://localhost:3000"
+GOOGLE_CLIENT_ID=""
+GOOGLE_CLIENT_SECRET=""
