@@ -7,19 +7,25 @@ import {
   buildSmokeArtifactKey,
   capturePageAcrossViewports,
   computeRetryBackoffSeconds,
+  discoverSitePages,
   handleDeadLetterScanMessageInD1,
   isAllowedScanMethod,
   normalizeUrlInput,
+  persistDiscoveredPagesInD1,
   recordCapturedPageInD1,
   requireScanWorkerBindings,
   type BrowserBindingLike,
   type BrowserLauncherFn,
   type MortemScanBindings,
+  type PageTemplateType,
   type PlaywrightBrowserLike,
+  type ScanBudgetsJson,
   type ScanFailureClass,
+  type ScanOptionsJson,
   type ScanPipelineQueueMessage,
   type ScanStage,
   type ScanStageHandlerMap,
+  type WorkspacePlan,
 } from "@mortem/core";
 
 export interface ScanQueueMessage extends ScanPipelineQueueMessage {
@@ -70,6 +76,7 @@ export type BrowserSmokeCaptureFn = (
 export interface QueueExecutionOptions {
   browserCapture?: BrowserSmokeCaptureFn;
   browserLauncher?: BrowserLauncherFn;
+  discoveryFetch?: typeof fetch;
   stageHandlers?: ScanStageHandlerMap;
   now?: () => number;
 }
@@ -372,62 +379,231 @@ const worker = {
       }
 
       if (env.DB) {
+        const hasDiscoverySupport = Boolean(
+          options.discoveryFetch || env.ENVIRONMENT !== "test",
+        );
         const hasBrowserSupport = Boolean(
           options.browserLauncher || env.BROWSER,
         );
         const stageHandlers: ScanStageHandlerMap = {
-          ...(hasBrowserSupport
+          ...(hasDiscoverySupport
             ? {
-                capturing: async (ctx) => {
-                  const capture = await capturePageAcrossViewports({
+                discovering: async (ctx) => {
+                  const workspaceRow = await ctx.d1
+                    .prepare(`SELECT plan FROM workspaces WHERE id = ? LIMIT 1`)
+                    .bind(ctx.workspaceId)
+                    .first<{ plan: WorkspacePlan }>();
+
+                  const scanConfigRow = await ctx.d1
+                    .prepare(
+                      `SELECT options_json, budgets_json FROM scans WHERE id = ? LIMIT 1`,
+                    )
+                    .bind(ctx.scanId)
+                    .first<{
+                      options_json: string;
+                      budgets_json: string;
+                    }>();
+
+                  let requestedMaxPages: number | undefined;
+                  try {
+                    const parsedOptions = scanConfigRow?.options_json
+                      ? (JSON.parse(
+                          scanConfigRow.options_json,
+                        ) as ScanOptionsJson)
+                      : {};
+                    const parsedBudgets = scanConfigRow?.budgets_json
+                      ? (JSON.parse(
+                          scanConfigRow.budgets_json,
+                        ) as ScanBudgetsJson)
+                      : {};
+                    requestedMaxPages =
+                      parsedOptions.maxPages ?? parsedBudgets.maxPages;
+                  } catch {
+                    // Use plan default cap
+                  }
+
+                  const discovery = await discoverSitePages({
                     targetUrl: ctx.targetUrl,
-                    browserBinding: env.BROWSER,
-                    browserLauncher:
-                      options.browserLauncher ??
-                      launchCloudflarePlaywrightBrowser,
-                    now: options.now,
+                    plan: workspaceRow?.plan ?? "single",
+                    maxPages: requestedMaxPages,
+                    fetchFn: options.discoveryFetch ?? fetch,
                   });
-                  const { pageId } = await recordCapturedPageInD1({
+
+                  if (
+                    discovery.entryUrlDisallowed &&
+                    discovery.selectedPages.length === 0
+                  ) {
+                    return {
+                      outcome: "failed",
+                      failureClass: "robots_disallowed",
+                      failureReason: `Target URL ${ctx.targetUrl} is disallowed by ${discovery.origin}/robots.txt.`,
+                      pagesDiscovered: 0,
+                      metadata: {
+                        origin: discovery.origin,
+                        robots: discovery.robots,
+                        skippedDisallowedUrls: discovery.skippedDisallowedUrls,
+                      },
+                    };
+                  }
+
+                  const persistedPages = await persistDiscoveredPagesInD1({
                     d1: ctx.d1,
                     scanId: ctx.scanId,
-                    pageId: ctx.pageId,
-                    capture,
+                    discovery,
                     nowMs: ctx.nowMs,
                   });
 
-                  if (capture.captureStatus === "blocked") {
+                  return {
+                    outcome: "continue",
+                    pagesDiscovered: persistedPages.length,
+                    message: `Discovered ${persistedPages.length} high-value page(s) for ${discovery.origin}${
+                      discovery.skippedDisallowedUrls.length > 0
+                        ? ` (${discovery.skippedDisallowedUrls.length} skipped via robots.txt)`
+                        : ""
+                    }`,
+                    metadata: {
+                      origin: discovery.origin,
+                      maxPages: discovery.maxPages,
+                      robots: discovery.robots,
+                      sitemaps: discovery.sitemaps,
+                      totalCandidatesInspected:
+                        discovery.totalCandidatesInspected,
+                      templateBreakdown: discovery.templateBreakdown,
+                      selectedUrls: persistedPages.map((p) => ({
+                        pageId: p.pageId,
+                        url: p.normalizedUrl,
+                        category: p.category,
+                        templateType: p.templateType,
+                      })),
+                      skippedDisallowedUrls: discovery.skippedDisallowedUrls,
+                    },
+                  };
+                },
+              }
+            : {}),
+          ...(hasBrowserSupport
+            ? {
+                capturing: async (ctx) => {
+                  const pendingStmt = ctx.d1
+                    .prepare(
+                      `SELECT id, url, normalized_url, template_type
+                       FROM pages
+                       WHERE scan_id = ? AND capture_status = 'pending'
+                       ORDER BY created_at ASC`,
+                    )
+                    .bind(ctx.scanId);
+                  const pendingRes = pendingStmt.all
+                    ? await pendingStmt.all<{
+                        id: string;
+                        url: string;
+                        normalized_url: string;
+                        template_type: PageTemplateType;
+                      }>()
+                    : { success: true, results: [] };
+                  const pendingPages =
+                    !ctx.pageId && (pendingRes.results?.length ?? 0) > 0
+                      ? pendingRes.results!
+                      : [
+                          {
+                            id: ctx.pageId ?? "",
+                            url: ctx.targetUrl,
+                            normalized_url: ctx.targetUrl,
+                            template_type: "home" as PageTemplateType,
+                          },
+                        ];
+
+                  let capturedCount = 0;
+                  let lastCapturePageId = "";
+                  let lastFinalUrl = ctx.targetUrl;
+                  let lastCaptureStatus: string = "captured";
+                  let lastStatusCode: number | null = 200;
+                  let anyNetworkIdleTimedOut = false;
+
+                  for (let idx = 0; idx < pendingPages.length; idx += 1) {
+                    const targetPage = pendingPages[idx]!;
+                    const capture = await capturePageAcrossViewports({
+                      targetUrl: targetPage.url,
+                      browserBinding: env.BROWSER,
+                      browserLauncher:
+                        options.browserLauncher ??
+                        launchCloudflarePlaywrightBrowser,
+                      now: options.now,
+                    });
+                    const { pageId } = await recordCapturedPageInD1({
+                      d1: ctx.d1,
+                      scanId: ctx.scanId,
+                      pageId: targetPage.id || undefined,
+                      templateType: targetPage.template_type,
+                      capture,
+                      nowMs: ctx.nowMs,
+                    });
+
+                    lastCapturePageId = pageId;
+                    lastFinalUrl = capture.finalUrl;
+                    lastCaptureStatus = capture.captureStatus;
+                    lastStatusCode = capture.statusCode;
+                    if (
+                      capture.desktop.networkIdleTimedOut ||
+                      capture.mobile.networkIdleTimedOut
+                    ) {
+                      anyNetworkIdleTimedOut = true;
+                    }
+
+                    if (capture.captureStatus === "blocked") {
+                      if (idx === 0 && pendingPages.length === 1) {
+                        return {
+                          outcome: "failed",
+                          failureClass:
+                            capture.failureClass ?? "upstream_blocked",
+                          failureReason:
+                            capture.failureReason ??
+                            `Target returned a WAF or bot challenge screen for ${targetPage.url}`,
+                          pagesCaptured: 0,
+                          metadata: {
+                            pageId,
+                            captureStatus: capture.captureStatus,
+                            botProvider:
+                              capture.desktop.botChallenge.provider ??
+                              capture.mobile.botChallenge.provider,
+                          },
+                        };
+                      }
+                      continue;
+                    }
+
+                    capturedCount += 1;
+                  }
+
+                  if (capturedCount === 0) {
                     return {
                       outcome: "failed",
-                      failureClass: capture.failureClass ?? "upstream_blocked",
-                      failureReason:
-                        capture.failureReason ??
-                        `Target returned a WAF or bot challenge screen for ${ctx.targetUrl}`,
+                      failureClass: "upstream_blocked",
+                      failureReason: `Target returned a WAF or bot challenge screen for ${ctx.targetUrl}`,
                       pagesCaptured: 0,
                       metadata: {
-                        pageId,
-                        captureStatus: capture.captureStatus,
-                        botProvider:
-                          capture.desktop.botChallenge.provider ??
-                          capture.mobile.botChallenge.provider,
+                        pageId: lastCapturePageId,
+                        captureStatus: "blocked",
                       },
                     };
                   }
 
                   return {
                     outcome: "continue",
-                    pagesDiscovered: 1,
-                    pagesCaptured: 1,
+                    pagesDiscovered: pendingPages.length,
+                    pagesCaptured: capturedCount,
                     message:
-                      capture.captureStatus === "partial"
-                        ? `Captured desktop and mobile viewports at network-idle timeout mark (partial) for ${capture.finalUrl}`
-                        : `Captured desktop (1440x900) and mobile (390x844) evidence for ${capture.finalUrl}`,
+                      pendingPages.length > 1
+                        ? `Captured desktop (1440x900) and mobile (390x844) evidence across ${capturedCount}/${pendingPages.length} discovered page(s)`
+                        : lastCaptureStatus === "partial"
+                          ? `Captured desktop and mobile viewports at network-idle timeout mark (partial) for ${lastFinalUrl}`
+                          : `Captured desktop (1440x900) and mobile (390x844) evidence for ${lastFinalUrl}`,
                     metadata: {
-                      pageId,
-                      captureStatus: capture.captureStatus,
-                      statusCode: capture.statusCode,
-                      networkIdleTimedOut:
-                        capture.desktop.networkIdleTimedOut ||
-                        capture.mobile.networkIdleTimedOut,
+                      pageId: lastCapturePageId,
+                      pagesAttempted: pendingPages.length,
+                      pagesCaptured: capturedCount,
+                      captureStatus: lastCaptureStatus,
+                      statusCode: lastStatusCode,
+                      networkIdleTimedOut: anyNetworkIdleTimedOut,
                     },
                   };
                 },

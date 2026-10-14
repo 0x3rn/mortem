@@ -860,4 +860,240 @@ describe("@mortem/scan-worker handlers", () => {
     expect(pageRow?.status_code).toBe(403);
     expect(pageRow?.failure_reason).toContain("Cloudflare challenge");
   });
+
+  it("discovers high-value pages via robots.txt, sitemap.xml, and internal links during discovering stage and captures all discovered pages in capturing stage (THE-177)", async () => {
+    const d1 = createSqliteD1();
+    const { scanId, workspaceId, siteId } = await seedWorkspaceAndQueuedScan(
+      d1,
+      "scan_discovery_01",
+      "https://stripe.com/",
+    );
+
+    const enqueuedMessages: ScanQueueMessage[] = [];
+    const ackDiscover = vi.fn();
+
+    const discoveryFetch: typeof fetch = async (input) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "https://stripe.com/robots.txt") {
+        return new Response(
+          "User-agent: MortemBot\nDisallow: /private-beta\nSitemap: https://stripe.com/sitemap.xml\n",
+          { status: 200 },
+        );
+      }
+      if (url === "https://stripe.com/sitemap.xml") {
+        return new Response(
+          `<urlset>
+            <url><loc>https://stripe.com/</loc></url>
+            <url><loc>https://stripe.com/pricing</loc></url>
+            <url><loc>https://stripe.com/private-beta</loc></url>
+          </urlset>`,
+          { status: 200 },
+        );
+      }
+      if (url === "https://stripe.com/") {
+        return new Response(
+          `<html><body>
+            <a href="/contact">Contact Sales</a>
+            <a href="/payments">Payments Product</a>
+          </body></html>`,
+          { status: 200 },
+        );
+      }
+      return new Response("Not Found", { status: 404 });
+    };
+
+    // 1. Run discovering stage
+    await worker.queue(
+      {
+        queue: "mortem-scans",
+        messages: [
+          {
+            id: "msg_disc_1",
+            body: {
+              kind: "website_scan",
+              scanId,
+              workspaceId,
+              siteId,
+              targetUrl: "https://stripe.com/",
+              stage: "discovering",
+              attempt: 1,
+              idempotencyKey: `${scanId}:discovering`,
+            },
+            ack: ackDiscover,
+            retry: vi.fn(),
+          },
+        ],
+      },
+      {
+        ENVIRONMENT: "test",
+        DB: d1,
+        SCAN_QUEUE: {
+          send: async (msg: ScanQueueMessage) => {
+            enqueuedMessages.push(msg);
+          },
+        },
+      },
+      {
+        now: () => 1_760_000_020_000,
+        discoveryFetch,
+      },
+    );
+
+    expect(ackDiscover).toHaveBeenCalledOnce();
+    expect(enqueuedMessages).toHaveLength(1);
+    expect(enqueuedMessages[0]?.stage).toBe("capturing");
+
+    const pendingPages = await d1
+      .prepare(
+        `SELECT normalized_url, template_type, capture_status
+         FROM pages WHERE scan_id = ? ORDER BY created_at ASC`,
+      )
+      .bind(scanId).all!<{
+      normalized_url: string;
+      template_type: string;
+      capture_status: string;
+    }>();
+
+    expect(pendingPages.results).toEqual([
+      {
+        normalized_url: "https://stripe.com/",
+        template_type: "home",
+        capture_status: "pending",
+      },
+      {
+        normalized_url: "https://stripe.com/pricing",
+        template_type: "pricing",
+        capture_status: "pending",
+      },
+      {
+        normalized_url: "https://stripe.com/contact",
+        template_type: "contact",
+        capture_status: "pending",
+      },
+      {
+        normalized_url: "https://stripe.com/payments",
+        template_type: "product",
+        capture_status: "pending",
+      },
+    ]);
+
+    const discoverEvent = await d1
+      .prepare(
+        `SELECT pages_discovered, metadata_json FROM scan_events
+         WHERE scan_id = ? AND stage = 'discovering' LIMIT 1`,
+      )
+      .bind(scanId)
+      .first<{ pages_discovered: number; metadata_json: string }>();
+
+    expect(discoverEvent?.pages_discovered).toBe(4);
+    const parsedMeta = JSON.parse(discoverEvent?.metadata_json ?? "{}") as {
+      skippedDisallowedUrls?: Array<{ normalizedUrl: string }>;
+    };
+    expect(parsedMeta.skippedDisallowedUrls).toEqual([
+      expect.objectContaining({
+        normalizedUrl: "https://stripe.com/private-beta",
+      }),
+    ]);
+
+    // 2. Run capturing stage across all 4 discovered pages
+    const ackCapture = vi.fn();
+    await worker.queue(
+      {
+        queue: "mortem-scans",
+        messages: [
+          {
+            id: "msg_cap_1",
+            body: enqueuedMessages[0]!,
+            ack: ackCapture,
+            retry: vi.fn(),
+          },
+        ],
+      },
+      {
+        ENVIRONMENT: "test",
+        DB: d1,
+        SCAN_QUEUE: {
+          send: async (msg: ScanQueueMessage) => {
+            enqueuedMessages.push(msg);
+          },
+        },
+      },
+      {
+        now: () => 1_760_000_025_000,
+        browserLauncher: async () => ({
+          async newContext() {
+            return {
+              async newPage() {
+                let currentUrl = "https://stripe.com/";
+                return {
+                  async addInitScript() {},
+                  async route() {},
+                  on() {},
+                  async goto(targetUrl: string) {
+                    currentUrl = targetUrl;
+                    const req = {
+                      url: () => currentUrl,
+                      method: () => "GET",
+                      resourceType: () => "document",
+                      isNavigationRequest: () => true,
+                      redirectedFrom: () => null,
+                    };
+                    return {
+                      url: () => currentUrl,
+                      status: () => 200,
+                      headers: () => ({ "content-type": "text/html" }),
+                      request: () => req,
+                    };
+                  },
+                  async waitForLoadState() {},
+                  async evaluate<R>() {
+                    return { ttfbMs: 30, fcpMs: 90 } as unknown as R;
+                  },
+                  async content() {
+                    return "<html><head><title>Stripe</title></head><body>Main</body></html>";
+                  },
+                  async title() {
+                    return "Stripe";
+                  },
+                  url: () => currentUrl,
+                  async screenshot() {
+                    return new Uint8Array([137, 80, 78, 71]);
+                  },
+                  async close() {},
+                };
+              },
+              async close() {},
+            };
+          },
+          async close() {},
+        }),
+      },
+    );
+
+    expect(ackCapture).toHaveBeenCalledOnce();
+    const capturedPages = await d1
+      .prepare(
+        `SELECT normalized_url, template_type, capture_status, status_code
+         FROM pages WHERE scan_id = ? ORDER BY created_at ASC`,
+      )
+      .bind(scanId).all!<{
+      normalized_url: string;
+      template_type: string;
+      capture_status: string;
+      status_code: number;
+    }>();
+
+    expect(capturedPages.results).toHaveLength(4);
+    expect(
+      capturedPages.results?.every(
+        (p) => p.capture_status === "captured" && p.status_code === 200,
+      ),
+    ).toBe(true);
+    expect(capturedPages.results?.map((p) => p.template_type)).toEqual([
+      "home",
+      "pricing",
+      "contact",
+      "product",
+    ]);
+  });
 });
