@@ -21,7 +21,8 @@
     "enabled": true
   },
   "vars": {
-    "ENVIRONMENT": "production"
+    "ENVIRONMENT": "production",
+    "BETTER_AUTH_URL": "https://mortem.corstack.dev"
   },
   "d1_databases": [
     {

@@ -69,6 +69,7 @@ export function createMortemAuth(options: CreateMortemAuthOptions) {
       "http://127.0.0.1:3000",
       "http://localhost:8787",
       "http://127.0.0.1:8787",
+      "https://mortem.corstack.dev",
       "https://mortem.somtochukwu-ike.workers.dev",
       ...(requestOrigin ? [requestOrigin] : []),
     ],
