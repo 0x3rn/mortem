@@ -17,7 +17,7 @@
     {
       "binding": "DB",
       "database_name": "mortem-db",
-      "database_id": "00000000-0000-4000-8000-000000000001",
+      "database_id": "627be762-eccf-4b51-8cc4-e3f42a81f3e5",
       "migrations_dir": "../../packages/core/migrations"
     }
   ],
@@ -108,7 +108,7 @@
         {
           "binding": "DB",
           "database_name": "mortem-db",
-          "database_id": "00000000-0000-4000-8000-000000000001",
+          "database_id": "627be762-eccf-4b51-8cc4-e3f42a81f3e5",
           "migrations_dir": "../../packages/core/migrations"
         }
       ],

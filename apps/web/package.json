@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "prebuild:cf": "node ../../scripts/patch-opennext-cloudflare.mjs",
     "build:cf": "opennextjs-cloudflare build",
     "preview:cf": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy:staging": "opennextjs-cloudflare build && opennextjs-cloudflare deploy --env staging",

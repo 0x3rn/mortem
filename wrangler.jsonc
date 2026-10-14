@@ -1,0 +1,56 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "mortem",
+  "main": "apps/web/.open-next/worker.js",
+  "compatibility_date": "2026-04-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": "apps/web/.open-next/assets",
+    "binding": "ASSETS"
+  },
+  "images": {
+    "binding": "IMAGES"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "mortem"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "ENVIRONMENT": "production"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mortem-db",
+      "database_id": "627be762-eccf-4b51-8cc4-e3f42a81f3e5",
+      "migrations_dir": "packages/core/migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "EVIDENCE",
+      "bucket_name": "mortem-evidence"
+    },
+    {
+      "binding": "NEXT_INC_CACHE_R2_BUCKET",
+      "bucket_name": "mortem-opennext-cache"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "SCAN_QUEUE",
+        "queue": "mortem-scans"
+      },
+      {
+        "binding": "SCAN_DLQ",
+        "queue": "mortem-scans-dlq"
+      }
+    ]
+  }
+}
