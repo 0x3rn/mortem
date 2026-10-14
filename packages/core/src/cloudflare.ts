@@ -31,13 +31,15 @@ export class PlatformBindingError extends Error {
   }
 }
 
-export interface D1ExecResultLike {
+export interface D1ExecResultLike<T = Record<string, unknown>> {
   success: boolean;
+  results?: T[];
 }
 
 export interface D1BoundStatementLike {
   run(): Promise<D1ExecResultLike>;
   first<T = Record<string, unknown>>(): Promise<T | null>;
+  all?<T = Record<string, unknown>>(): Promise<D1ExecResultLike<T>>;
 }
 
 export interface D1PreparedStatementLike {
@@ -46,6 +48,7 @@ export interface D1PreparedStatementLike {
 
 export interface D1DatabaseLike {
   prepare(query: string): D1PreparedStatementLike;
+  batch?(statements: D1BoundStatementLike[]): Promise<D1ExecResultLike[]>;
 }
 
 export interface R2ObjectMetaLike {
@@ -81,6 +84,10 @@ export interface BrowserBindingLike {
 export interface MortemWebBindings {
   ENVIRONMENT?: string;
   MORTEM_ADMIN_SECRET?: string;
+  BETTER_AUTH_SECRET?: string;
+  BETTER_AUTH_URL?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
   DB?: D1DatabaseLike;
   EVIDENCE?: R2BucketLike;
   SCAN_QUEUE?: QueueLike;
@@ -90,6 +97,10 @@ export interface MortemWebBindings {
 export interface ValidatedMortemWebBindings {
   ENVIRONMENT: string;
   MORTEM_ADMIN_SECRET?: string;
+  BETTER_AUTH_SECRET?: string;
+  BETTER_AUTH_URL?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
   DB: D1DatabaseLike;
   EVIDENCE: R2BucketLike;
   SCAN_QUEUE: QueueLike;

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { ExamineForm } from "./examine-form";
 
 export const metadata: Metadata = {
@@ -266,12 +267,26 @@ export default function Home() {
               Pricing
             </a>
           </nav>
-          <a
-            href="#examine"
-            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-destructive"
-          >
-            Run an autopsy
-          </a>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/sign-in"
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Sign in
+            </Link>
+            <Link
+              href="/workspace"
+              className="hidden rounded-md border border-border bg-card px-3.5 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-accent sm:inline-block"
+            >
+              Workspace
+            </Link>
+            <a
+              href="#examine"
+              className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-destructive"
+            >
+              Run an autopsy
+            </a>
+          </div>
         </div>
       </header>
 

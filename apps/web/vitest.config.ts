@@ -4,6 +4,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
+      "@": resolve(__dirname, "./src"),
       "@mortem/core": resolve(__dirname, "../../packages/core/src/index.ts"),
       "@mortem/scan-worker": resolve(
         __dirname,
@@ -13,6 +14,6 @@ export default defineConfig({
   },
   test: {
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-    exclude: ["e2e/**", "node_modules/**", ".next/**"],
+    exclude: ["e2e/**", "node_modules/**", ".next/**", ".open-next/**"],
   },
 });

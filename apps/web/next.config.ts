@@ -1,7 +1,11 @@
 import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 import type { NextConfig } from "next";
 
-if (process.env.NODE_ENV === "development") {
+const isNextDevOrStart = process.argv.some(
+  (arg) => arg === "dev" || arg === "start",
+);
+
+if (isNextDevOrStart) {
   initOpenNextCloudflareForDev({
     persist: {
       path: "../../.wrangler/state/v3",

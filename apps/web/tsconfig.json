@@ -26,6 +26,7 @@
   },
   "include": [
     "next-env.d.ts",
+    "../../packages/core/src/node-sqlite.d.ts",
     "src/**/*.ts",
     "src/**/*.tsx",
     "e2e/**/*.ts",
