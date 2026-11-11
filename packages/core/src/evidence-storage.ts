@@ -638,6 +638,70 @@ export async function persistPageCaptureEvidenceToR2AndD1(params: {
   artifacts.push(consoleLogArtifact);
   totalBytesWritten += consoleLogArtifact.byteSize;
 
+  // 6b. axe-core results per viewport (`axe_raw_{viewport}.json`) and element crops (THE-182).
+  // Stored even when axe did not run, so the reason is evidence too.
+  for (const viewport of ["desktop", "mobile"] as const) {
+    const accessibility = capture[viewport].accessibility;
+    if (!accessibility) continue;
+    const axeArtifact = await writeEvidenceArtifactToR2AndD1({
+      d1,
+      r2,
+      scanId,
+      pageId,
+      kind: "axe_raw",
+      suffix: viewport,
+      payload: accessibility.artifactJson,
+      contentType: "application/json; charset=utf-8",
+      extension: "json",
+      metadata: {
+        viewport,
+        status: accessibility.status,
+        durationMs: accessibility.durationMs,
+        ...(accessibility.status === "ok"
+          ? {
+              axeVersion: accessibility.axeVersion,
+              violationCount: accessibility.violationCount,
+              elementCrops: accessibility.elementCrops.length,
+              cropFailures: accessibility.cropFailures,
+            }
+          : { message: accessibility.message }),
+      },
+      nowMs,
+    });
+    artifacts.push(axeArtifact);
+    totalBytesWritten += axeArtifact.byteSize;
+
+    if (accessibility.status !== "ok") continue;
+    for (const [index, crop] of accessibility.elementCrops.entries()) {
+      const cropArtifact = await writeEvidenceArtifactToR2AndD1({
+        d1,
+        r2,
+        scanId,
+        pageId,
+        kind: "screenshot_element",
+        suffix: `a11y_${viewport}_${index}`,
+        payload: crop.png,
+        contentType: "image/png",
+        extension: "png",
+        metadata: {
+          source: "axe",
+          viewport,
+          ruleId: crop.ruleId,
+          selector: crop.target,
+          bbox: {
+            x: crop.box.x,
+            y: crop.box.y,
+            width: crop.box.width,
+            height: crop.box.height,
+          },
+        },
+        nowMs,
+      });
+      artifacts.push(cropArtifact);
+      totalBytesWritten += cropArtifact.byteSize;
+    }
+  }
+
   // 7. Optional element screenshots (`scans/{scanId}/pages/{pageId}/screenshot_element_{suffix}.{ext}`)
   for (const elem of params.elementScreenshots ?? []) {
     const elemContentType = elem.contentType ?? "image/png";

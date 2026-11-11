@@ -95,10 +95,14 @@ export function normalizeUrlInput(raw: string): string | null {
 
 import { validateAndNormalizeIntakeUrl } from "./intake";
 
+export * from "./accessibility-checks";
+export * from "./accessibility-checks-runner";
+export * from "./axe-runner";
 export * from "./browser-capture";
 export * from "./cloudflare";
 export * from "./crawl-budgets";
 export * from "./email-otp";
+export * from "./evidence-read";
 export * from "./evidence-storage";
 export * from "./findings-store";
 export * from "./intake";

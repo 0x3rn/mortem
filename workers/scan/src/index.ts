@@ -19,6 +19,7 @@ import {
   persistPageCaptureEvidenceToR2AndD1,
   recordCapturedPageInD1,
   requireScanWorkerBindings,
+  runAccessibilityChecks,
   runPerformanceChecks,
   runSeoChecks,
   resolveScanBudgets,
@@ -34,6 +35,7 @@ import {
   type ScanStageHandlerMap,
   type WorkspacePlan,
 } from "@mortem/core";
+import { AXE_SOURCE } from "./axe-source";
 
 export interface ScanQueueMessage extends ScanPipelineQueueMessage {
   kind?: "website_scan" | "scan" | "platform_smoke";
@@ -88,6 +90,8 @@ export interface QueueExecutionOptions {
   psiFetch?: typeof fetch;
   /** Injected backoff sleeper for PageSpeed Insights retries (tests). */
   psiSleep?: (ms: number) => Promise<void>;
+  /** axe-core source for capture; defaults to the bundled build, `null` disables it (tests). */
+  axeSource?: string | null;
   stageHandlers?: ScanStageHandlerMap;
   now?: () => number;
 }
@@ -619,6 +623,10 @@ const worker = {
                         navigationTimeoutMs: budgets.perPageTimeoutMs,
                         maxBytesPerPage: budgets.maxBytesPerPage,
                         now: options.now,
+                        axeSource:
+                          options.axeSource === undefined
+                            ? AXE_SOURCE
+                            : options.axeSource,
                       });
                       const { pageId } = await recordCapturedPageInD1({
                         d1: ctx.d1,
@@ -808,6 +816,14 @@ const worker = {
               nowMs: ctx.nowMs,
             });
 
+            // Accessibility next: it also only reads stored evidence (axe ran during capture).
+            const accessibility = await runAccessibilityChecks({
+              d1: ctx.d1,
+              r2: env.EVIDENCE,
+              scanId: ctx.scanId,
+              nowMs: ctx.nowMs,
+            });
+
             const summary = await runPerformanceChecks({
               d1: ctx.d1,
               r2: env.EVIDENCE,
@@ -834,6 +850,11 @@ const worker = {
                 ? ` (${seo.pagesSkipped.length} skipped)`
                 : ""
             }`;
+            const a11yMessage = `Accessibility: ${accessibility.viewportsAudited} page view(s) audited, ${accessibility.findingsWritten} accessibility finding(s)${
+              accessibility.unavailable.length > 0
+                ? ` (${accessibility.unavailable.length} not audited)`
+                : ""
+            }`;
             const psiMessage =
               totalResults === 0
                 ? "No captured pages were eligible for PageSpeed Insights analysis"
@@ -846,9 +867,20 @@ const worker = {
             // scoring stage excludes the performance category with a stated reason.
             return {
               outcome: "continue",
-              checksCompleted: seo.pagesAnalyzed + summary.resultsOk,
-              message: `${seoMessage}; ${psiMessage}`,
+              checksCompleted:
+                seo.pagesAnalyzed +
+                accessibility.viewportsAudited +
+                summary.resultsOk,
+              message: `${seoMessage}; ${a11yMessage}; ${psiMessage}`,
               metadata: {
+                accessibility: {
+                  viewportsAudited: accessibility.viewportsAudited,
+                  findingsWritten: accessibility.findingsWritten,
+                  rulesFired: accessibility.rulesFired,
+                  needsReviewRuleCount: accessibility.needsReviewRuleCount,
+                  unavailable: accessibility.unavailable,
+                  coverageNote: accessibility.coverageNote,
+                },
                 seo: {
                   pagesConsidered: seo.pagesConsidered,
                   pagesAnalyzed: seo.pagesAnalyzed,

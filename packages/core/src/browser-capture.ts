@@ -1,3 +1,4 @@
+import { runAxeInPage, type AxeCaptureResult } from "./axe-runner";
 import type { BrowserBindingLike, D1DatabaseLike } from "./cloudflare";
 import { READ_ONLY_SCAN_POLICY, isAllowedScanMethod } from "./index";
 import {
@@ -96,6 +97,8 @@ export interface ViewportCaptureEvidence {
   browserMs?: number;
   botChallenge: BotChallengeDetectionResult;
   captureStatus: "captured" | "partial" | "blocked";
+  /** axe-core run for this viewport (THE-182); absent when the page was a bot challenge. */
+  accessibility?: AxeCaptureResult;
 }
 
 export interface DualViewportPageCaptureResult {
@@ -179,6 +182,8 @@ export interface PlaywrightPageLike {
   screenshot(options?: {
     type?: "png" | "jpeg";
     fullPage?: boolean;
+    /** With `fullPage: true`, coordinates are document coordinates in CSS px. */
+    clip?: { x: number; y: number; width: number; height: number };
   }): Promise<Uint8Array | ArrayBuffer>;
   close(): Promise<void>;
 }
@@ -222,6 +227,9 @@ export interface CapturePageAcrossViewportsOptions {
   dohResolver?: DohResolverFn;
   fetchFn?: typeof fetch;
   now?: () => number;
+  /** axe-core source to run in each viewport (THE-182). Omitted: accessibility is recorded as skipped. */
+  axeSource?: string | null;
+  axeTimeoutMs?: number;
 }
 
 export interface RequestSafetyDecision {
@@ -557,6 +565,8 @@ export async function captureSingleViewportInIsolatedContext(params: {
   networkIdleTimeoutMs: number;
   maxBytesPerPage?: number;
   now: () => number;
+  axeSource?: string | null;
+  axeTimeoutMs?: number;
 }): Promise<ViewportCaptureEvidence> {
   const viewportStartMs = params.now();
   const maxBytesPerPage = params.maxBytesPerPage ?? 10 * 1024 * 1024;
@@ -748,6 +758,19 @@ export async function captureSingleViewportInIsolatedContext(params: {
       renderedHtml,
     });
 
+    // Accessibility audit after the screenshots, so axe cannot affect them.
+    // A bot-challenge screen is not the site, so it is not audited.
+    const accessibility = botChallenge.blocked
+      ? undefined
+      : await runAxeInPage({
+          page,
+          axeSource: params.axeSource,
+          viewport: params.viewportName,
+          pageUrl: finalUrl,
+          now: params.now,
+          timeoutMs: params.axeTimeoutMs,
+        });
+
     const captureStatus: ViewportCaptureEvidence["captureStatus"] =
       botChallenge.blocked
         ? "blocked"
@@ -785,6 +808,7 @@ export async function captureSingleViewportInIsolatedContext(params: {
       browserMs,
       botChallenge,
       captureStatus,
+      ...(accessibility ? { accessibility } : {}),
     };
   } finally {
     if (page) {
@@ -837,6 +861,8 @@ export async function capturePageAcrossViewports(
       networkIdleTimeoutMs,
       maxBytesPerPage,
       now,
+      axeSource: options.axeSource,
+      axeTimeoutMs: options.axeTimeoutMs,
     });
 
     const mobile = await captureSingleViewportInIsolatedContext({
@@ -848,6 +874,8 @@ export async function capturePageAcrossViewports(
       networkIdleTimeoutMs,
       maxBytesPerPage,
       now,
+      axeSource: options.axeSource,
+      axeTimeoutMs: options.axeTimeoutMs,
     });
 
     const isBlocked =

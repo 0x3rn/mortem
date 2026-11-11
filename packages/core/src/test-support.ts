@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type { AxeCaptureResult } from "./axe-runner";
 import type { DualViewportPageCaptureResult } from "./browser-capture";
 import type {
   D1BoundStatementLike,
@@ -156,6 +157,7 @@ export function buildCaptureResult(params: {
   html: string;
   headers?: Record<string, string>;
   finalUrl?: string;
+  accessibility?: Partial<Record<"desktop" | "mobile", AxeCaptureResult>>;
 }): DualViewportPageCaptureResult {
   const finalUrl = params.finalUrl ?? params.url;
   const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -185,6 +187,9 @@ export function buildCaptureResult(params: {
     networkIdleTimedOut: false,
     botChallenge: { blocked: false, provider: null, reason: null },
     captureStatus: "captured" as const,
+    ...(params.accessibility?.[name]
+      ? { accessibility: params.accessibility[name] }
+      : {}),
   });
   return {
     requestedUrl: params.url,

@@ -1,10 +1,6 @@
 import { HTML_TRUNCATION_MARKER } from "./browser-capture";
-import {
-  PlatformBindingError,
-  type D1DatabaseLike,
-  type R2BucketLike,
-  type R2ObjectBodyLike,
-} from "./cloudflare";
+import type { D1DatabaseLike, R2BucketLike } from "./cloudflare";
+import { readEvidenceText } from "./evidence-read";
 import { replaceFindingsByPrefix, wrapDbError } from "./findings-store";
 import {
   evaluateSeoRules,
@@ -77,34 +73,6 @@ function isStringRecord(value: unknown): value is Record<string, string> {
   );
 }
 
-async function readObjectText(
-  r2: R2BucketLike,
-  key: string,
-): Promise<string | null> {
-  if (typeof r2.get !== "function") {
-    throw new PlatformBindingError(
-      "MISSING_BINDING",
-      "EVIDENCE",
-      "The R2 binding 'EVIDENCE' cannot read objects, so SEO checks cannot load captured HTML.",
-    );
-  }
-  let object: R2ObjectBodyLike | null;
-  try {
-    object = await r2.get(key);
-  } catch (err) {
-    throw new PlatformBindingError(
-      "STORAGE_READ_FAILED",
-      "EVIDENCE",
-      `Failed to read ${key} from R2: ${err instanceof Error ? err.message : "unknown error"}`,
-      { cause: err },
-    );
-  }
-  if (!object) return null;
-  return object.text
-    ? object.text()
-    : new TextDecoder().decode(await object.arrayBuffer());
-}
-
 export async function runSeoChecks(
   params: RunSeoChecksParams,
 ): Promise<SeoChecksSummary> {
@@ -162,7 +130,7 @@ export async function runSeoChecks(
       });
       continue;
     }
-    const html = await readObjectText(r2, htmlRow.r2_key);
+    const html = await readEvidenceText(r2, htmlRow.r2_key, "SEO checks");
     if (html === null) {
       skipped.push({
         pageId: page.id,
@@ -174,7 +142,7 @@ export async function runSeoChecks(
 
     const headersRow = evidenceFor(page.id, "headers");
     const headersText = headersRow
-      ? await readObjectText(r2, headersRow.r2_key)
+      ? await readEvidenceText(r2, headersRow.r2_key, "SEO checks")
       : null;
     const storedHeaders = parseJson<StoredHeadersJson>(headersText);
     const htmlMeta = parseJson<{ finalUrl?: unknown }>(htmlRow.metadata_json);

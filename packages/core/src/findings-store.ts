@@ -25,6 +25,10 @@ export interface StoredFindingOccurrence {
   excerpt: string;
   /** Distinguishes several occurrences on the same page (e.g. `mobile`/`desktop`). */
   occurrenceKey?: string;
+  /** CSS selector of the offending element, when the check has one. */
+  selector?: string | null;
+  /** Element bounding box, stored as `bbox_json`. */
+  bbox?: unknown;
 }
 
 export interface StoredFindingCandidate {
@@ -70,7 +74,7 @@ export function wrapDbError(
   );
 }
 
-const PREFIX_PATTERN = /^[a-z]+\.$/;
+const PREFIX_PATTERN = /^[a-z][a-z0-9]*\.$/;
 
 /**
  * Replaces every finding of the scan whose `check_id` starts with
@@ -148,14 +152,18 @@ export async function replaceFindingsByPrefix(params: {
           .prepare(
             `INSERT INTO finding_occurrences (
                id, finding_id, page_id, evidence_artifact_id, selector, excerpt, bbox_json, created_at
-             ) VALUES (?, ?, ?, ?, NULL, ?, NULL, ?)`,
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .bind(
             id,
             findingId,
             occurrence.pageId,
             occurrence.evidenceArtifactId,
+            occurrence.selector ?? null,
             occurrence.excerpt,
+            occurrence.bbox === undefined || occurrence.bbox === null
+              ? null
+              : JSON.stringify(occurrence.bbox),
             nowMs,
           ),
       );

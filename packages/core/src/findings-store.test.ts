@@ -108,7 +108,16 @@ describe("replaceFindingsByPrefix", () => {
         candidates: [candidate("perf.lab.lcp", [])],
       }),
     ).rejects.toThrow(/does not belong/);
-    for (const bad of ["%", "seo", "seo.%", "SEO.", ""]) {
+    for (const bad of [
+      "%",
+      "seo",
+      "seo.%",
+      "SEO.",
+      "",
+      "_.",
+      "1abc.",
+      "a_b.",
+    ]) {
       await expect(
         replaceFindingsByPrefix({
           d1,
@@ -195,5 +204,61 @@ describe("replaceFindingsByPrefix", () => {
         `SELECT COUNT(*) AS n FROM findings WHERE check_id = 'seo.title.missing'`,
       ),
     ).toBe(1);
+  });
+});
+
+describe("replaceFindingsByPrefix occurrence details", () => {
+  it("accepts the a11y. prefix and stores selector and bounding box", async () => {
+    const d1 = await setup();
+    await replaceFindingsByPrefix({
+      d1,
+      scanId: "scan_fs",
+      checkIdPrefix: "a11y.",
+      label: "accessibility",
+      nowMs: 1,
+      candidates: [
+        {
+          ...candidate("a11y.image-alt", [
+            {
+              pageId: "p_home",
+              evidenceArtifactId: "p_home_ev_html",
+              excerpt: "desktop: <img>",
+              selector: "#hero",
+              bbox: { x: 1, y: 2, width: 200, height: 80, viewport: "desktop" },
+              occurrenceKey: "desktop_0",
+            },
+            {
+              pageId: "p_about",
+              evidenceArtifactId: "p_about_ev_html",
+              excerpt: "no selector",
+            },
+          ]),
+          category: "accessibility",
+        },
+      ],
+    });
+    const rows = d1.sqlite
+      .prepare(
+        `SELECT page_id, selector, bbox_json FROM finding_occurrences ORDER BY page_id`,
+      )
+      .all() as Array<{
+      page_id: string;
+      selector: string | null;
+      bbox_json: string | null;
+    }>;
+    expect(rows).toEqual([
+      { page_id: "p_about", selector: null, bbox_json: null },
+      {
+        page_id: "p_home",
+        selector: "#hero",
+        bbox_json: JSON.stringify({
+          x: 1,
+          y: 2,
+          width: 200,
+          height: 80,
+          viewport: "desktop",
+        }),
+      },
+    ]);
   });
 });

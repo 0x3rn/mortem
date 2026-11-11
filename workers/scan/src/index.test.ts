@@ -1156,8 +1156,13 @@ describe("@mortem/scan-worker handlers", () => {
     ]);
 
     const artifacts = await listScanEvidenceArtifactsInD1(d1, scanId);
-    // 4 pages * 6 core artifacts (html, headers, screenshot_desktop, screenshot_mobile, network_log, console_log) = 24
-    expect(artifacts).toHaveLength(24);
+    // 4 pages * 6 core artifacts (html, headers, screenshot_desktop, screenshot_mobile, network_log, console_log) = 24,
+    // plus one axe_raw per viewport per page (THE-182) = 8.
+    expect(artifacts).toHaveLength(32);
+    const axeArtifacts = artifacts.filter((a) => a.kind === "axe_raw");
+    expect(axeArtifacts).toHaveLength(8);
+    // This test's stub browser cannot execute axe, so each result honestly records an error.
+    expect(axeArtifacts.every((a) => a.metadata.status === "error")).toBe(true);
     const completeness = await verifyScanEvidenceCompletenessInD1(
       d1,
       scanId,
