@@ -58,8 +58,16 @@
   "env": {
     "staging": {
       "name": "mortem-staging",
+      "routes": [
+        {
+          "pattern": "staging.mortem.corstack.dev",
+          "custom_domain": true
+        }
+      ],
       "vars": {
-        "ENVIRONMENT": "staging"
+        "ENVIRONMENT": "staging",
+        "BETTER_AUTH_URL": "https://staging.mortem.corstack.dev",
+        "MORTEM_EMAIL_FROM": "mortem@corstack.dev"
       },
       "images": {
         "binding": "IMAGES"
@@ -74,7 +82,7 @@
         {
           "binding": "DB",
           "database_name": "mortem-db-staging",
-          "database_id": "00000000-0000-4000-8000-000000000002",
+          "database_id": "6d79ded8-ce32-4b83-b7f6-a604b2f79769",
           "migrations_dir": "../../packages/core/migrations"
         }
       ],
@@ -85,7 +93,7 @@
         },
         {
           "binding": "NEXT_INC_CACHE_R2_BUCKET",
-          "bucket_name": "mortem-opennext-cache"
+          "bucket_name": "mortem-opennext-cache-staging"
         }
       ],
       "queues": {

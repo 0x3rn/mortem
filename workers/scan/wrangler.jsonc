@@ -71,6 +71,11 @@
   "env": {
     "staging": {
       "name": "mortem-scan-staging",
+      // The account allows 5 cron triggers and production uses one; the
+      // scheduled() handler does no work yet, so staging runs without a cron.
+      "triggers": {
+        "crons": [],
+      },
       "vars": {
         "ENVIRONMENT": "staging",
       },
@@ -81,7 +86,7 @@
         {
           "binding": "DB",
           "database_name": "mortem-db-staging",
-          "database_id": "00000000-0000-4000-8000-000000000002",
+          "database_id": "6d79ded8-ce32-4b83-b7f6-a604b2f79769",
           "migrations_dir": "../../packages/core/migrations",
         },
       ],
