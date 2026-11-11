@@ -1072,9 +1072,11 @@ export async function submitScanIntake(
       includeConversionAnalysis: true,
     },
   );
+  // Wall-clock and browser-time budgets are deliberately not frozen here: the scan
+  // Worker applies DEFAULT_SCAN_BUDGETS, so a budget fix reaches every new scan.
+  // (A hard-coded 60 s here made 3-page scans fail in production.)
   const budgetsJson = JSON.stringify({
     maxPages: 10,
-    maxWallClockMs: 60_000,
     maxAiInputTokens: 12_000,
     maxAiOutputTokens: 3_000,
   });

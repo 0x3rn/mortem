@@ -35,9 +35,14 @@ export interface ResolvedScanBudgets {
 export const DEFAULT_SCAN_BUDGETS: Readonly<
   Omit<ResolvedScanBudgets, "maxPages">
 > = {
-  maxWallTimeMs: 90_000,
+  // Measured in production (Cloudflare Browser Run, 2026-11): one page across both
+  // viewports takes 10–25 s, plus 0.4–3 s of axe-core per viewport. The earlier
+  // 60–90 s budgets could not fit even 3 pages, so a 3-page scan failed. These
+  // fit the free plan's 5 pages with headroom and stay far below the 15-minute
+  // Queue consumer limit.
+  maxWallTimeMs: 300_000,
   maxBytesPerPage: 10 * 1024 * 1024, // 10 MB per page HTML/payload cap
-  maxBrowserMs: 60_000,
+  maxBrowserMs: 240_000,
   maxExternalLinkChecks: 50,
   perFetchTimeoutMs: 10_000,
   perPageTimeoutMs: 25_000,
@@ -168,9 +173,20 @@ export class CrawlBudgetEnforcer {
   private _psiCalls = 0;
   private _externalLinkChecks = 0;
 
-  constructor(budgets: ResolvedScanBudgets, startedAtMs = Date.now()) {
+  /**
+   * `prior` carries what earlier attempts of the same stage already used (a
+   * queue redelivery starts a fresh Worker invocation), so budgets apply to the
+   * whole scan rather than to each attempt.
+   */
+  constructor(
+    budgets: ResolvedScanBudgets,
+    startedAtMs = Date.now(),
+    prior: { browserMs?: number; pagesCaptured?: number } = {},
+  ) {
     this.budgets = budgets;
     this.startedAtMs = startedAtMs;
+    this._browserMs = Math.max(0, Math.round(prior.browserMs ?? 0));
+    this._pagesCaptured = Math.max(0, Math.floor(prior.pagesCaptured ?? 0));
   }
 
   get pagesCaptured(): number {

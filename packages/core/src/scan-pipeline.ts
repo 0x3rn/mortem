@@ -53,6 +53,13 @@ export interface ScanStageExecutionResult {
   metadata?: Record<string, unknown>;
   failureClass?: ScanFailureClass;
   failureReason?: string;
+  /**
+   * The stage covered only part of the site (for example a crawl budget ran out
+   * after some pages were captured) but the scan should still continue, so the
+   * captured pages get checked and scored. The scan ends as `partial` with this
+   * reason instead of `complete`.
+   */
+  partialCoverage?: { failureClass: ScanFailureClass; reason: string };
 }
 
 export type ScanStageHandler = (
@@ -223,6 +230,34 @@ function hasIdempotencyKeyInEvents(
   return false;
 }
 
+/** The first partial-coverage marker a stage recorded for this scan, if any. */
+function findRecordedPartialCoverage(
+  events: readonly ExistingScanEventRow[],
+): { failureClass: ScanFailureClass; reason: string } | null {
+  for (const event of events) {
+    try {
+      const parsed = JSON.parse(event.metadata_json) as {
+        partialCoverage?: { failureClass?: unknown; reason?: unknown };
+      };
+      const marker = parsed?.partialCoverage;
+      if (marker && typeof marker.reason === "string") {
+        return {
+          failureClass: normalizeFailureClass(
+            typeof marker.failureClass === "string"
+              ? marker.failureClass
+              : undefined,
+            "budget_exceeded",
+          ),
+          reason: marker.reason,
+        };
+      }
+    } catch {
+      // Malformed metadata carries no marker.
+    }
+  }
+  return null;
+}
+
 function getLatestEventCounters(events: readonly ExistingScanEventRow[]): {
   pagesDiscovered: number;
   pagesCaptured: number;
@@ -387,6 +422,9 @@ export async function advanceScanStageInD1(
     idempotencyKey,
     attempt,
     ...(message.pageId ? { pageId: message.pageId } : {}),
+    ...(stageResult.partialCoverage
+      ? { partialCoverage: stageResult.partialCoverage }
+      : {}),
   });
 
   await d1
@@ -471,24 +509,36 @@ export async function advanceScanStageInD1(
       : getNextActiveScanStage(executedStage);
 
   if (!nextStage) {
+    // Partial coverage recorded by an earlier stage (or this one) makes the
+    // finished scan `partial`, so a budget-limited capture is still diagnosed.
+    const recordedPartial =
+      stageResult.partialCoverage ??
+      findRecordedPartialCoverage(existingEvents);
     const terminalStatus: TerminalScanStage =
-      stageResult.outcome === "partial" ? "partial" : "complete";
+      stageResult.outcome === "partial" || recordedPartial
+        ? "partial"
+        : "complete";
     const terminalKey = buildScanStageIdempotencyKey(
       scanRow.id,
       terminalStatus,
     );
+    const partialClass =
+      stageResult.outcome === "partial"
+        ? stageResult.failureClass
+        : recordedPartial?.failureClass;
+    const partialReason =
+      stageResult.outcome === "partial"
+        ? (stageResult.failureReason ?? stageResult.message ?? null)
+        : (recordedPartial?.reason ?? null);
     const terminalFailureClass =
-      terminalStatus === "partial" && stageResult.failureClass
-        ? normalizeFailureClass(stageResult.failureClass, "budget_exceeded")
+      terminalStatus === "partial" && partialClass
+        ? normalizeFailureClass(partialClass, "budget_exceeded")
         : null;
     const terminalFailureReason =
-      terminalStatus === "partial"
-        ? (stageResult.failureReason ?? stageResult.message ?? null)
-        : null;
+      terminalStatus === "partial" ? partialReason : null;
     const terminalMessage =
       terminalStatus === "partial"
-        ? (stageResult.failureReason ??
-          stageResult.message ??
+        ? (partialReason ??
           `Scan completed with partial coverage for ${canonicalTargetUrl}`)
         : `Scan completed for ${canonicalTargetUrl}`;
 

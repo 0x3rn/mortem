@@ -1172,7 +1172,7 @@ describe("@mortem/scan-worker handlers", () => {
     expect(completeness.violations).toHaveLength(0);
   });
 
-  it("completes scan as partial (budget_exceeded) with gathered evidence and usage_json telemetry when crawl budgets are exceeded mid-capture, and skips retries on permanent errors (THE-179)", async () => {
+  it("still checks the captured pages and ends the scan as partial (budget_exceeded) when crawl budgets run out mid-capture, and skips retries on permanent errors (THE-179)", async () => {
     const d1 = createSqliteD1();
     const { scanId, workspaceId, siteId } = await seedWorkspaceAndQueuedScan(
       d1,
@@ -1233,21 +1233,8 @@ describe("@mortem/scan-worker handlers", () => {
         .run();
     }
 
-    const r2Objects = new Map<string, number>();
-    const r2Bucket: R2BucketLike = {
-      async put(key, value) {
-        const size =
-          typeof value === "string"
-            ? Buffer.byteLength(value)
-            : value.byteLength;
-        r2Objects.set(key, size);
-        return { key, size };
-      },
-      async head(key) {
-        const size = r2Objects.get(key);
-        return size !== undefined ? { key, size } : null;
-      },
-    };
+    // Readable R2: since THE-181/182 the checking stage reads captured evidence back.
+    const r2Bucket = createInMemoryR2();
 
     const enqueuedMessages: ScanQueueMessage[] = [];
     const ackBudget = vi.fn();
@@ -1344,6 +1331,62 @@ describe("@mortem/scan-worker handlers", () => {
     expect(ackBudget).toHaveBeenCalledOnce();
     expect(retryBudget).not.toHaveBeenCalled();
 
+    // Capture records partial coverage and hands off to the checks; it no
+    // longer ends the scan, so the captured pages are still diagnosed.
+    const afterCapture = await d1
+      .prepare(`SELECT status, failure_class FROM scans WHERE id = ?`)
+      .bind(scanId)
+      .first<{ status: string; failure_class: string | null }>();
+    expect(afterCapture).toEqual({ status: "capturing", failure_class: null });
+    const captureEvent = await d1
+      .prepare(
+        `SELECT metadata_json FROM scan_events WHERE scan_id = ? AND stage = 'capturing'`,
+      )
+      .bind(scanId)
+      .first<{ metadata_json: string }>();
+    expect(
+      JSON.parse(captureEvent!.metadata_json).partialCoverage,
+    ).toMatchObject({
+      failureClass: "budget_exceeded",
+      reason: expect.stringContaining("maxPages"),
+    });
+    expect(enqueuedMessages.map((m) => m.stage)).toEqual(["checking"]);
+
+    // Drive the remaining stages (checking → scoring → generating_report).
+    for (let guard = 0; enqueuedMessages.length > 0 && guard < 10; guard += 1) {
+      const body = enqueuedMessages.shift()!;
+      await worker.queue(
+        {
+          queue: "mortem-scans",
+          messages: [
+            {
+              id: `msg_budget_${body.stage}`,
+              body,
+              ack: vi.fn(),
+              retry: vi.fn(),
+            },
+          ],
+        },
+        {
+          ENVIRONMENT: "test",
+          DB: d1,
+          EVIDENCE: r2Bucket,
+          SCAN_QUEUE: {
+            send: async (msg: ScanQueueMessage) => {
+              enqueuedMessages.push(msg);
+            },
+          },
+        },
+        {
+          now: () => {
+            currentClockMs += 500;
+            return currentClockMs;
+          },
+          psiFetch: vi.fn() as unknown as typeof fetch,
+        },
+      );
+    }
+
     const scanRow = await d1
       .prepare(
         `SELECT status, failure_class, failure_reason, usage_json
@@ -1360,6 +1403,15 @@ describe("@mortem/scan-worker handlers", () => {
     expect(scanRow?.status).toBe("partial");
     expect(scanRow?.failure_class).toBe("budget_exceeded");
     expect(scanRow?.failure_reason).toContain("maxPages");
+
+    // The two captured pages were checked even though the budget ran out.
+    const checkingEvent = await d1
+      .prepare(
+        `SELECT message FROM scan_events WHERE scan_id = ? AND stage = 'checking'`,
+      )
+      .bind(scanId)
+      .first<{ message: string }>();
+    expect(checkingEvent?.message).toContain("SEO: 2/2 page(s) analyzed");
 
     const usage = JSON.parse(scanRow?.usage_json ?? "{}") as {
       browserMs?: number;
@@ -2044,5 +2096,297 @@ describe("@mortem/scan-worker checking stage — SEO (THE-181)", () => {
     expect(scan.failure_class).toBe("internal_error");
     expect(scan.failure_reason).toContain("cannot read objects");
     expect(psiFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("@mortem/scan-worker capture budgets: redelivery after the budget ran out", () => {
+  const T0 = 1_792_143_198_981;
+
+  function captureMessage(
+    scanId: string,
+    workspaceId: string,
+    siteId: string,
+  ): ScanQueueMessage {
+    return {
+      kind: "website_scan",
+      scanId,
+      workspaceId,
+      siteId,
+      targetUrl: "https://morrow.example.test/",
+      stage: "capturing",
+      attempt: 1,
+      idempotencyKey: `${scanId}:capturing`,
+    };
+  }
+
+  it("keeps pages an earlier attempt captured, checks them and ends partial when a redelivered capture hits the wall-clock budget", async () => {
+    // Replays production scan_c564687761dd38109099: 60 s budget, "/" and "/login"
+    // captured by the first attempt, "/register" still pending, and the capture
+    // stage redelivered at +61 s. Before the fix the scan failed with 0 pages.
+    const d1 = createSqliteD1();
+    const r2 = createInMemoryR2();
+    const { scanId, workspaceId, siteId } = await seedWorkspaceAndQueuedScan(
+      d1,
+      "scan_incident_01",
+      "https://morrow.example.test/",
+    );
+    await d1
+      .prepare(
+        `UPDATE scans SET status = 'capturing', started_at = ?, budgets_json = ?, usage_json = ? WHERE id = ?`,
+      )
+      .bind(
+        T0,
+        JSON.stringify({ maxPages: 10, maxWallTimeMs: 60_000 }),
+        JSON.stringify({ pagesDiscovered: 3, browserMs: 0 }),
+        scanId,
+      )
+      .run();
+    const pages = [
+      {
+        id: "page_home",
+        path: "/",
+        status: "captured",
+        title: "Morrow - plan your day with focus",
+      },
+      {
+        id: "page_login",
+        path: "/login",
+        status: "captured",
+        title: "Sign in to Morrow and plan your day",
+      },
+      { id: "page_register", path: "/register", status: "pending", title: "" },
+    ];
+    for (const [i, p] of pages.entries()) {
+      const url = `https://morrow.example.test${p.path}`;
+      await d1
+        .prepare(
+          `INSERT INTO pages (id, scan_id, url, normalized_url, template_type, status_code, capture_status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'other', 200, ?, ?, ?)`,
+        )
+        .bind(p.id, scanId, url, url, p.status, T0 + i, T0 + i)
+        .run();
+      if (p.status === "captured") {
+        await persistPageCaptureEvidenceToR2AndD1({
+          d1,
+          r2,
+          scanId,
+          pageId: p.id,
+          capture: buildCaptureResult({
+            url,
+            html: `<!doctype html><html lang="en"><head><title>${p.title}</title><link rel="canonical" href="${url}"></head><body><h1>${p.title}</h1></body></html>`,
+          }),
+          nowMs: T0 + 10_000,
+        });
+      }
+    }
+
+    const queued: ScanQueueMessage[] = [
+      captureMessage(scanId, workspaceId, siteId),
+    ];
+    let clock = T0 + 61_327;
+    const launcher = vi.fn();
+    for (let guard = 0; queued.length > 0 && guard < 10; guard += 1) {
+      const body = queued.shift()!;
+      await worker.queue(
+        {
+          queue: "mortem-scans",
+          messages: [
+            { id: `incident_${guard}`, body, ack: vi.fn(), retry: vi.fn() },
+          ],
+        },
+        {
+          ENVIRONMENT: "test",
+          DB: d1,
+          EVIDENCE: r2,
+          SCAN_QUEUE: {
+            send: async (msg: ScanQueueMessage) => {
+              queued.push(msg);
+            },
+          },
+        },
+        {
+          now: () => (clock += 100),
+          browserLauncher: launcher as unknown as never,
+          psiFetch: vi.fn() as unknown as typeof fetch,
+        },
+      );
+    }
+
+    // The budget had run out, so no new capture was started...
+    expect(launcher).not.toHaveBeenCalled();
+    const register = await d1
+      .prepare(`SELECT capture_status, failure_reason FROM pages WHERE id = ?`)
+      .bind("page_register")
+      .first<{ capture_status: string; failure_reason: string }>();
+    expect(register?.capture_status).toBe("skipped");
+    expect(register?.failure_reason).toContain("wall-clock budget exceeded");
+
+    // ...but the two pages already captured were kept and checked, and the scan
+    // ended partial instead of failed.
+    const scan = await d1
+      .prepare(
+        `SELECT status, failure_class, failure_reason, usage_json FROM scans WHERE id = ?`,
+      )
+      .bind(scanId)
+      .first<{
+        status: string;
+        failure_class: string;
+        failure_reason: string;
+        usage_json: string;
+      }>();
+    expect(scan?.status).toBe("partial");
+    expect(scan?.failure_class).toBe("budget_exceeded");
+    expect(scan?.failure_reason).toContain("wall-clock budget exceeded");
+    expect(JSON.parse(scan!.usage_json)).toMatchObject({
+      pagesDiscovered: 3,
+      pagesCaptured: 2,
+    });
+    const capturing = await d1
+      .prepare(
+        `SELECT message FROM scan_events WHERE scan_id = ? AND stage = 'capturing'`,
+      )
+      .bind(scanId)
+      .first<{ message: string }>();
+    expect(capturing?.message).toContain("Partial capture (2/3 page(s))");
+    const checking = await d1
+      .prepare(
+        `SELECT message FROM scan_events WHERE scan_id = ? AND stage = 'checking'`,
+      )
+      .bind(scanId)
+      .first<{ message: string }>();
+    expect(checking?.message).toContain("SEO: 2/2 page(s) analyzed");
+  });
+
+  it("counts browser time used by earlier attempts against the browser budget", async () => {
+    const d1 = createSqliteD1();
+    const { scanId, workspaceId, siteId } = await seedWorkspaceAndQueuedScan(
+      d1,
+      "scan_incident_02",
+      "https://morrow.example.test/",
+    );
+    await d1
+      .prepare(
+        `UPDATE scans SET status = 'capturing', started_at = ?, budgets_json = ?, usage_json = ? WHERE id = ?`,
+      )
+      .bind(
+        T0,
+        JSON.stringify({ maxBrowserMs: 50_000 }),
+        JSON.stringify({ browserMs: 50_000 }), // already used by an earlier attempt
+        scanId,
+      )
+      .run();
+    await d1
+      .prepare(
+        `INSERT INTO pages (id, scan_id, url, normalized_url, template_type, capture_status, created_at, updated_at)
+         VALUES ('page_pending', ?, 'https://morrow.example.test/x', 'https://morrow.example.test/x', 'other', 'pending', ?, ?)`,
+      )
+      .bind(scanId, T0, T0)
+      .run();
+    const launcher = vi.fn();
+    await worker.queue(
+      {
+        queue: "mortem-scans",
+        messages: [
+          {
+            id: "incident_b",
+            body: captureMessage(scanId, workspaceId, siteId),
+            ack: vi.fn(),
+            retry: vi.fn(),
+          },
+        ],
+      },
+      {
+        ENVIRONMENT: "test",
+        DB: d1,
+        EVIDENCE: createInMemoryR2(),
+        SCAN_QUEUE: { send: async () => undefined },
+      },
+      {
+        now: () => T0 + 1_000,
+        browserLauncher: launcher as unknown as never,
+      },
+    );
+    expect(launcher).not.toHaveBeenCalled();
+    const pageRow = await d1
+      .prepare(`SELECT capture_status, failure_reason FROM pages WHERE id = ?`)
+      .bind("page_pending")
+      .first<{ capture_status: string; failure_reason: string }>();
+    expect(pageRow?.capture_status).toBe("skipped");
+    expect(pageRow?.failure_reason).toContain(
+      "browser execution budget exceeded",
+    );
+  });
+});
+
+describe("@mortem/scan-worker capture budgets: page cap across redeliveries", () => {
+  it("counts pages captured by an earlier attempt against maxPages", async () => {
+    const T0 = 1_792_143_198_981;
+    const d1 = createSqliteD1();
+    const { scanId, workspaceId, siteId } = await seedWorkspaceAndQueuedScan(
+      d1,
+      "scan_incident_03",
+      "https://morrow.example.test/",
+    );
+    await d1
+      .prepare(
+        `UPDATE scans SET status = 'capturing', started_at = ?, budgets_json = ? WHERE id = ?`,
+      )
+      .bind(T0, JSON.stringify({ maxPages: 2 }), scanId)
+      .run();
+    const seeded = [
+      ["page_a", "/", "captured"],
+      ["page_b", "/about", "captured"],
+      ["page_c", "/pricing", "pending"],
+    ] as const;
+    for (const [i, [id, path, status]] of seeded.entries()) {
+      const url = `https://morrow.example.test${path}`;
+      await d1
+        .prepare(
+          `INSERT INTO pages (id, scan_id, url, normalized_url, template_type, capture_status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'other', ?, ?, ?)`,
+        )
+        .bind(id, scanId, url, url, status, T0 + i, T0 + i)
+        .run();
+    }
+    const launcher = vi.fn();
+    await worker.queue(
+      {
+        queue: "mortem-scans",
+        messages: [
+          {
+            id: "incident_c",
+            body: {
+              kind: "website_scan",
+              scanId,
+              workspaceId,
+              siteId,
+              targetUrl: "https://morrow.example.test/",
+              stage: "capturing",
+              attempt: 1,
+              idempotencyKey: `${scanId}:capturing`,
+            },
+            ack: vi.fn(),
+            retry: vi.fn(),
+          },
+        ],
+      },
+      {
+        ENVIRONMENT: "test",
+        DB: d1,
+        EVIDENCE: createInMemoryR2(),
+        SCAN_QUEUE: { send: async () => undefined },
+      },
+      {
+        now: () => T0 + 1_000,
+        browserLauncher: launcher as unknown as never,
+      },
+    );
+    expect(launcher).not.toHaveBeenCalled();
+    const pageRow = await d1
+      .prepare(`SELECT capture_status, failure_reason FROM pages WHERE id = ?`)
+      .bind("page_c")
+      .first<{ capture_status: string; failure_reason: string }>();
+    expect(pageRow?.capture_status).toBe("skipped");
+    expect(pageRow?.failure_reason).toContain("maxPages");
   });
 });

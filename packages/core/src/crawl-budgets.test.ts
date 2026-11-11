@@ -114,6 +114,72 @@ describe("THE-179 crawl budgets, retry classification, and browser session clean
     expect(linkCheck.exceededBudget).toBe("maxExternalLinkChecks");
   });
 
+  it("seeds CrawlBudgetEnforcer with browser time and pages used by earlier attempts (queue redelivery)", () => {
+    const startMs = 1_760_000_000_000;
+    const budgets = resolveScanBudgets({
+      budgetsJson: { maxPages: 3, maxWallTimeMs: 60_000, maxBrowserMs: 20_000 },
+    });
+
+    // Pages captured by an earlier attempt count towards maxPages.
+    const pagesSeeded = new CrawlBudgetEnforcer(budgets, startMs, {
+      pagesCaptured: 3,
+    });
+    expect(pagesSeeded.pagesCaptured).toBe(3);
+    expect(
+      pagesSeeded.checkBeforeNextPage(startMs + 1_000).exceededBudget,
+    ).toBe("maxPages");
+
+    // Browser time from an earlier attempt counts towards maxBrowserMs.
+    const browserSeeded = new CrawlBudgetEnforcer(budgets, startMs, {
+      browserMs: 20_000,
+    });
+    expect(browserSeeded.browserMs).toBe(20_000);
+    expect(
+      browserSeeded.checkBeforeNextPage(startMs + 1_000).exceededBudget,
+    ).toBe("maxBrowserMs");
+
+    // Partial prior usage still leaves room, and new usage adds on top of it.
+    const partlyUsed = new CrawlBudgetEnforcer(budgets, startMs, {
+      browserMs: 15_000,
+      pagesCaptured: 1,
+    });
+    expect(partlyUsed.checkBeforeNextPage(startMs + 1_000).allowed).toBe(true);
+    partlyUsed.recordPageCapture({
+      browserMs: 6_000,
+      r2BytesWritten: 0,
+      captured: true,
+    });
+    expect(partlyUsed.pagesCaptured).toBe(2);
+    expect(partlyUsed.browserMs).toBe(21_000);
+    expect(partlyUsed.checkBeforeNextPage(startMs + 2_000).exceededBudget).toBe(
+      "maxBrowserMs",
+    );
+
+    // Garbage prior values are clamped, never negative or fractional.
+    const clamped = new CrawlBudgetEnforcer(budgets, startMs, {
+      browserMs: -500,
+      pagesCaptured: 1.9,
+    });
+    expect(clamped.browserMs).toBe(0);
+    expect(clamped.pagesCaptured).toBe(1);
+
+    // No prior usage behaves as before.
+    const fresh = new CrawlBudgetEnforcer(budgets, startMs);
+    expect(fresh.browserMs).toBe(0);
+    expect(fresh.pagesCaptured).toBe(0);
+  });
+
+  it("gives scans enough default wall-clock and browser time to capture a free-plan site", () => {
+    // Production scan_c564687761dd38109099 needed ~35 s for 2 pages; 60 s was
+    // too tight once a queue redelivery happened.
+    expect(DEFAULT_SCAN_BUDGETS.maxWallTimeMs).toBe(300_000);
+    expect(DEFAULT_SCAN_BUDGETS.maxBrowserMs).toBe(240_000);
+    expect(
+      resolveScanBudgets({ plan: "free", budgetsJson: { maxPages: 10 } })
+        .maxWallTimeMs,
+    ).toBe(300_000);
+  });
+
   it("truncates HTML payloads exceeding maxBytesPerPage (>10 MB) and marks capture partial with budget_exceeded", async () => {
     const oversizedHtml = `<html><head><title>Huge Document</title></head><body>${"A".repeat(
       250_000,

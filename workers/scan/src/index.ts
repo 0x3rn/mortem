@@ -512,13 +512,14 @@ const worker = {
 
                   const scanConfigRow = await ctx.d1
                     .prepare(
-                      `SELECT started_at, options_json, budgets_json FROM scans WHERE id = ? LIMIT 1`,
+                      `SELECT started_at, options_json, budgets_json, usage_json FROM scans WHERE id = ? LIMIT 1`,
                     )
                     .bind(ctx.scanId)
                     .first<{
                       started_at: number | null;
                       options_json: string;
                       budgets_json: string;
+                      usage_json: string | null;
                     }>();
 
                   const budgets = resolveScanBudgets({
@@ -527,9 +528,35 @@ const worker = {
                     optionsJson: scanConfigRow?.options_json,
                   });
 
+                  // A queue redelivery starts a fresh invocation: carry over the
+                  // browser time and pages that earlier attempts already used.
+                  const countPages = async (statuses: string) =>
+                    (
+                      await ctx.d1
+                        .prepare(
+                          `SELECT COUNT(*) AS n FROM pages WHERE scan_id = ? AND capture_status IN (${statuses})`,
+                        )
+                        .bind(ctx.scanId)
+                        .first<{ n: number }>()
+                    )?.n ?? 0;
+                  let priorBrowserMs = 0;
+                  try {
+                    const usage = JSON.parse(
+                      scanConfigRow?.usage_json ?? "{}",
+                    ) as { browserMs?: unknown };
+                    priorBrowserMs =
+                      typeof usage.browserMs === "number" ? usage.browserMs : 0;
+                  } catch {
+                    priorBrowserMs = 0; // unreadable usage counts as none used
+                  }
+                  const priorCaptured = await countPages(
+                    "'captured', 'partial'",
+                  );
+
                   const budgetEnforcer = new CrawlBudgetEnforcer(
                     budgets,
                     scanConfigRow?.started_at ?? ctx.nowMs,
+                    { browserMs: priorBrowserMs, pagesCaptured: priorCaptured },
                   );
 
                   const sessionPool = createBrowserSessionPool({
@@ -651,6 +678,14 @@ const worker = {
                         budgetExceededReason = capture.failureReason;
                       }
 
+                      // Record browser time per page, so an interrupted run keeps it.
+                      await updateScanUsageInD1({
+                        d1: ctx.d1,
+                        scanId: ctx.scanId,
+                        increment: { browserMs: capture.browserMs ?? 2 },
+                        nowMs: ctx.nowMs,
+                      });
+
                       if (capture.captureStatus === "blocked") {
                         budgetEnforcer.recordPageCapture({
                           browserMs: capture.browserMs ?? 2,
@@ -660,9 +695,6 @@ const worker = {
                           await updateScanUsageInD1({
                             d1: ctx.d1,
                             scanId: ctx.scanId,
-                            increment: {
-                              browserMs: budgetEnforcer.browserMs,
-                            },
                             set: {
                               pagesDiscovered: pendingPages.length,
                               pagesCaptured: 0,
@@ -719,20 +751,31 @@ const worker = {
                     await sessionPool.closeIdleBrowsers();
                   }
 
+                  // Count from D1, not this run: pages captured by an earlier
+                  // attempt of this stage still count (production failed a scan
+                  // with 2 captured pages because a redelivered run counted 0).
+                  const capturedTotal = await countPages(
+                    "'captured', 'partial'",
+                  );
+                  const pagesTotal = await countPages(
+                    "'pending', 'captured', 'partial', 'failed', 'skipped'",
+                  );
+                  const pagesDiscovered = Math.max(
+                    pagesTotal,
+                    pendingPages.length,
+                  );
+
                   await updateScanUsageInD1({
                     d1: ctx.d1,
                     scanId: ctx.scanId,
-                    increment: {
-                      browserMs: budgetEnforcer.browserMs,
-                    },
                     set: {
-                      pagesDiscovered: pendingPages.length,
-                      pagesCaptured: capturedCount,
+                      pagesDiscovered,
+                      pagesCaptured: capturedTotal,
                     },
                     nowMs: ctx.nowMs,
                   });
 
-                  if (capturedCount === 0) {
+                  if (capturedTotal === 0) {
                     return {
                       outcome: "failed",
                       failureClass: budgetExceededReason
@@ -752,17 +795,22 @@ const worker = {
                   }
 
                   if (budgetExceededReason) {
+                    // Keep going: the captured pages are still checked and scored,
+                    // and the scan ends as `partial` with this reason.
                     return {
-                      outcome: "partial",
-                      failureClass: "budget_exceeded",
-                      failureReason: budgetExceededReason,
-                      pagesDiscovered: pendingPages.length,
-                      pagesCaptured: capturedCount,
-                      message: `Completed partial capture (${capturedCount}/${pendingPages.length} page(s)) within crawl budget: ${budgetExceededReason}`,
+                      outcome: "continue",
+                      partialCoverage: {
+                        failureClass: "budget_exceeded",
+                        reason: budgetExceededReason,
+                      },
+                      pagesDiscovered,
+                      pagesCaptured: capturedTotal,
+                      message: `Partial capture (${capturedTotal}/${pagesDiscovered} page(s)) within crawl budget: ${budgetExceededReason}`,
                       metadata: {
                         pageId: lastCapturePageId,
                         pagesAttempted: pendingPages.length,
-                        pagesCaptured: capturedCount,
+                        pagesCaptured: capturedTotal,
+                        capturedThisAttempt: capturedCount,
                         captureStatus: "partial",
                         budgetExceededReason,
                         browserMs: budgetEnforcer.browserMs,

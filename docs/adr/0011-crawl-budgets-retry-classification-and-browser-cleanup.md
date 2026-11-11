@@ -12,15 +12,15 @@ Cloudflare Workers and Cloudflare Browser Rendering enforce strict CPU, memory, 
 
 1. **Hard Per-Scan Crawl Budgets (`CrawlBudgetEnforcer`):**
    - `resolveScanBudgets` merges workspace plan defaults (`single` = 1 page, `pro`/`agency` = 5 pages) with per-scan `scans.budgets_json` and `scans.options_json` overrides:
-     - `maxWallTimeMs` (default `90,000ms`)
-     - `maxBrowserMs` (default `60,000ms`)
+     - `maxWallTimeMs` (default `300,000ms`; was `90,000ms`, raised in [ADR 0015](0015-scan-budgets-across-redeliveries-and-partial-coverage.md))
+     - `maxBrowserMs` (default `240,000ms`; was `60,000ms`, raised in ADR 0015)
      - `maxPages` (plan-bounded)
      - `maxBytesPerPage` (default `10,485,760` bytes / `10 MB`)
      - `maxExternalLinkChecks` (default `50`)
      - `perFetchTimeoutMs` (default `10,000ms` via `AbortSignal.timeout`)
      - `perPageTimeoutMs` (default `25,000ms`)
    - Before each page capture in `workers/scan`, `budgetEnforcer.checkBeforeNextPage(nowMs)` checks `maxPages`, `maxBrowserMs`, and `maxWallTimeMs`.
-   - If a budget is exceeded after at least one page has been captured, remaining `pending` pages in D1 are marked `capture_status = 'skipped'` with the budget reason, and the scan completes as `status = 'partial'` with `failure_class = 'budget_exceeded'` while preserving all captured pages and R2 evidence.
+   - If a budget is exceeded after at least one page has been captured, remaining `pending` pages in D1 are marked `capture_status = 'skipped'` with the budget reason, and the scan completes as `status = 'partial'` with `failure_class = 'budget_exceeded'` while preserving all captured pages and R2 evidence. Since ADR 0015 the captured pages are still checked and scored before the scan ends as `partial`, and pages captured by an earlier attempt of the stage count towards the budget and the result.
    - If a rendered DOM snapshot exceeds `maxBytesPerPage`, `enforceHtmlPayloadBudget` deterministically truncates the UTF-8 HTML payload to `maxBytesPerPage`, appends `<!-- [MORTEM_TRUNCATED: HTML exceeded maxBytesPerPage budget] -->`, and marks the capture `partial` (`failure_class = 'budget_exceeded'`).
 
 2. **Transient vs. Permanent Error Classification (`classifyScanErrorForRetry`):**

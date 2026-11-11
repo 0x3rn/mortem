@@ -26,7 +26,7 @@ Mortem must show which accessibility barriers a site has, who they affect, and t
 
 ## Consequences
 
-- axe adds browser time to every capture: measured 0.4–0.8 s per viewport on small pages and 1.3–2.8 s on bbc.com/news. That time counts toward `maxBrowserMs`. Scans already fail with `budget_exceeded` under the intake's 60 s wall-clock budget (seen in production for morrow.corstack.dev before this change), so the crawl budgets should be revisited.
+- axe adds browser time to every capture: measured 0.4–0.8 s per viewport on small pages and 1.3–2.8 s on bbc.com/news. That time counts toward `maxBrowserMs`. Scans already fail with `budget_exceeded` under the intake's 60 s wall-clock budget (seen in production for morrow.corstack.dev before this change), so the crawl budgets should be revisited. Done in ADR 0015.
 - The Worker bundle grows by axe's minified build (upload 4.91 MB, 1.05 MB gzipped, from 4.25 MB / 0.87 MB).
 - Pages captured before this release have no `axe_raw`; they are reported as `not_captured`, never as passing.
 - Verified with real Chromium: planted violations, WCAG tags, bounding boxes and crops at 1× and 3× scale (`axe-runner.browser.test.ts`), and live end to end on mortem.corstack.dev (0 violations, 2 needs-review rules), info.cern.ch (missing `lang` 3.1.1, target size 2.5.8) and bbc.com/news (unnamed button 4.1.2, untitled iframe) via `A11Y_LIVE=1 npx vitest run src/accessibility-checks.live.test.ts`.
