@@ -1,0 +1,1965 @@
+{
+  "_mortemFixture": {
+    "origin": "recorded",
+    "recordedAt": "2026-11-11T12:36:05.903Z",
+    "url": "https://info.cern.ch/",
+    "strategy": "MOBILE",
+    "trimmed": [
+      "lighthouseResult.fullPageScreenshot",
+      "lighthouseResult.audits.screenshot-thumbnails",
+      "lighthouseResult.audits.final-screenshot",
+      "lighthouseResult.audits.network-requests"
+    ]
+  },
+  "captchaResult": "CAPTCHA_NOT_NEEDED",
+  "kind": "pagespeedonline#result",
+  "id": "https://info.cern.ch/",
+  "loadingExperience": {
+    "id": "https://info.cern.ch/",
+    "metrics": {
+      "CUMULATIVE_LAYOUT_SHIFT_SCORE": {
+        "percentile": 0,
+        "distributions": [
+          {
+            "min": 0,
+            "max": 10,
+            "proportion": 1
+          },
+          {
+            "min": 10,
+            "max": 25,
+            "proportion": 0
+          },
+          {
+            "min": 25,
+            "proportion": 0
+          }
+        ],
+        "category": "FAST"
+      },
+      "EXPERIMENTAL_TIME_TO_FIRST_BYTE": {
+        "percentile": 1255,
+        "distributions": [
+          {
+            "min": 0,
+            "max": 800,
+            "proportion": 0.5538
+          },
+          {
+            "min": 800,
+            "max": 1800,
+            "proportion": 0.3367
+          },
+          {
+            "min": 1800,
+            "proportion": 0.1095
+          }
+        ],
+        "category": "AVERAGE"
+      },
+      "FIRST_CONTENTFUL_PAINT_MS": {
+        "percentile": 1162,
+        "distributions": [
+          {
+            "min": 0,
+            "max": 1800,
+            "proportion": 0.8839
+          },
+          {
+            "min": 1800,
+            "max": 3000,
+            "proportion": 0.0825
+          },
+          {
+            "min": 3000,
+            "proportion": 0.0336
+          }
+        ],
+        "category": "FAST"
+      },
+      "INTERACTION_TO_NEXT_PAINT": {
+        "percentile": 279,
+        "distributions": [
+          {
+            "min": 0,
+            "max": 200,
+            "proportion": 0.1559
+          },
+          {
+            "min": 200,
+            "max": 500,
+            "proportion": 0.8411
+          },
+          {
+            "min": 500,
+            "proportion": 0.0031
+          }
+        ],
+        "category": "AVERAGE"
+      },
+      "LARGEST_CONTENTFUL_PAINT_MS": {
+        "percentile": 1159,
+        "distributions": [
+          {
+            "min": 0,
+            "max": 2500,
+            "proportion": 0.9497
+          },
+          {
+            "min": 2500,
+            "max": 4000,
+            "proportion": 0.034
+          },
+          {
+            "min": 4000,
+            "proportion": 0.0163
+          }
+        ],
+        "category": "FAST"
+      }
+    },
+    "overall_category": "AVERAGE",
+    "initial_url": "https://info.cern.ch/"
+  },
+  "originLoadingExperience": {
+    "id": "https://info.cern.ch",
+    "metrics": {
+      "CUMULATIVE_LAYOUT_SHIFT_SCORE": {
+        "percentile": 0,
+        "distributions": [
+          {
+            "min": 0,
+            "max": 10,
+            "proportion": 0.9981
+          },
+          {
+            "min": 10,
+            "max": 25,
+            "proportion": 0.0017
+          },
+          {
+            "min": 25,
+            "proportion": 0.0002
+          }
+        ],
+        "category": "FAST"
+      },
+      "EXPERIMENTAL_TIME_TO_FIRST_BYTE": {
+        "percentile": 1023,
+        "distributions": [
+          {
+            "min": 0,
+            "max": 800,
+            "proportion": 0.6661
+          },
+          {
+            "min": 800,
+            "max": 1800,
+            "proportion": 0.2569
+          },
+          {
+            "min": 1800,
+            "proportion": 0.077
+          }
+        ],
+        "category": "AVERAGE"
+      },
+      "FIRST_CONTENTFUL_PAINT_MS": {
+        "percentile": 1040,
+        "distributions": [
+          {
+            "min": 0,
+            "max": 1800,
+            "proportion": 0.9061
+          },
+          {
+            "min": 1800,
+            "max": 3000,
+            "proportion": 0.0662
+          },
+          {
+            "min": 3000,
+            "proportion": 0.0277
+          }
+        ],
+        "category": "FAST"
+      },
+      "INTERACTION_TO_NEXT_PAINT": {
+        "percentile": 283,
+        "distributions": [
+          {
+            "min": 0,
+            "max": 200,
+            "proportion": 0.1328
+          },
+          {
+            "min": 200,
+            "max": 500,
+            "proportion": 0.8643
+          },
+          {
+            "min": 500,
+            "proportion": 0.0029
+          }
+        ],
+        "category": "AVERAGE"
+      },
+      "LARGEST_CONTENTFUL_PAINT_MS": {
+        "percentile": 1038,
+        "distributions": [
+          {
+            "min": 0,
+            "max": 2500,
+            "proportion": 0.9573
+          },
+          {
+            "min": 2500,
+            "max": 4000,
+            "proportion": 0.029
+          },
+          {
+            "min": 4000,
+            "proportion": 0.0137
+          }
+        ],
+        "category": "FAST"
+      }
+    },
+    "overall_category": "AVERAGE",
+    "initial_url": "https://info.cern.ch/"
+  },
+  "lighthouseResult": {
+    "requestedUrl": "https://info.cern.ch/",
+    "finalUrl": "https://info.cern.ch/",
+    "mainDocumentUrl": "https://info.cern.ch/",
+    "finalDisplayedUrl": "https://info.cern.ch/",
+    "lighthouseVersion": "13.6.0",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.8103.38 Safari/537.36",
+    "fetchTime": "2026-11-11T12:35:59.547Z",
+    "environment": {
+      "networkUserAgent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36",
+      "hostUserAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.8103.38 Safari/537.36",
+      "benchmarkIndex": 799
+    },
+    "runWarnings": [],
+    "configSettings": {
+      "emulatedFormFactor": "mobile",
+      "formFactor": "mobile",
+      "locale": "en-US",
+      "onlyCategories": ["performance"],
+      "channel": "lr"
+    },
+    "audits": {
+      "server-response-time": {
+        "id": "server-response-time",
+        "title": "Initial server response time was short",
+        "description": "Keep the server response time for the main document short because all other requests depend on it. [Learn more about the Time to First Byte metric](https://developer.chrome.com/docs/lighthouse/performance/time-to-first-byte/).",
+        "score": null,
+        "scoreDisplayMode": "error",
+        "errorMessage": "no timing found for main resource"
+      },
+      "inp-breakdown-insight": {
+        "id": "inp-breakdown-insight",
+        "title": "INP breakdown",
+        "description": "Start investigating [how to improve INP](https://developer.chrome.com/docs/performance/insights/inp-breakdown) by looking at the longest subpart",
+        "score": null,
+        "scoreDisplayMode": "notApplicable"
+      },
+      "diagnostics": {
+        "id": "diagnostics",
+        "title": "Diagnostics",
+        "description": "Collection of useful page vitals.",
+        "score": 1,
+        "scoreDisplayMode": "informative",
+        "details": {
+          "items": [
+            {
+              "throughput": 1003387556.9448546,
+              "numFonts": 0,
+              "rtt": 0.8999999999999999,
+              "numTasksOver50ms": 0,
+              "numTasksOver500ms": 0,
+              "totalByteWeight": 878,
+              "maxRtt": 0.8999999999999999,
+              "numStylesheets": 0,
+              "numTasks": 89,
+              "totalTaskTime": 28.211000000000006,
+              "numTasksOver25ms": 0,
+              "numScripts": 0,
+              "maxServerLatency": 0,
+              "numTasksOver10ms": 0,
+              "numRequests": 1,
+              "mainDocumentTransferSize": 878,
+              "numTasksOver100ms": 0
+            }
+          ],
+          "type": "debugdata"
+        }
+      },
+      "user-timings": {
+        "id": "user-timings",
+        "title": "User Timing marks and measures",
+        "description": "Consider instrumenting your app with the User Timing API to measure your app's real-world performance during key user experiences. [Learn more about User Timing marks](https://developer.chrome.com/docs/lighthouse/performance/user-timings/).",
+        "score": null,
+        "scoreDisplayMode": "notApplicable",
+        "details": {
+          "headings": [
+            {
+              "key": "name",
+              "label": "Name",
+              "valueType": "text"
+            },
+            {
+              "label": "Type",
+              "key": "timingType",
+              "valueType": "text"
+            },
+            {
+              "label": "Start Time",
+              "valueType": "ms",
+              "granularity": 0.01,
+              "key": "startTime"
+            },
+            {
+              "valueType": "ms",
+              "label": "Duration",
+              "granularity": 0.01,
+              "key": "duration"
+            }
+          ],
+          "items": [],
+          "type": "table"
+        }
+      },
+      "network-server-latency": {
+        "id": "network-server-latency",
+        "title": "Server Backend Latencies",
+        "description": "Server latencies can impact web performance. If the server latency of an origin is high, it's an indication the server is overloaded or has poor backend performance. [Learn more about server response time](https://hpbn.co/primer-on-web-performance/#analyzing-the-resource-waterfall).",
+        "score": 1,
+        "scoreDisplayMode": "informative",
+        "displayValue": "0 ms",
+        "details": {
+          "headings": [
+            {
+              "key": "origin",
+              "valueType": "text",
+              "label": "URL"
+            },
+            {
+              "granularity": 1,
+              "label": "Time Spent",
+              "valueType": "ms",
+              "key": "serverResponseTime"
+            }
+          ],
+          "sortedBy": ["serverResponseTime"],
+          "items": [
+            {
+              "origin": "https://info.cern.ch",
+              "serverResponseTime": 0
+            }
+          ],
+          "type": "table"
+        },
+        "numericValue": 0,
+        "numericUnit": "millisecond"
+      },
+      "max-potential-fid": {
+        "id": "max-potential-fid",
+        "title": "Max Potential First Input Delay",
+        "description": "The maximum potential First Input Delay that your users could experience is the duration of the longest task. [Learn more about the Maximum Potential First Input Delay metric](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-max-potential-fid/).",
+        "score": 1,
+        "scoreDisplayMode": "numeric",
+        "displayValue": "20 ms",
+        "numericValue": 16,
+        "numericUnit": "millisecond"
+      },
+      "long-tasks": {
+        "id": "long-tasks",
+        "title": "Avoid long main-thread tasks",
+        "description": "Lists the longest tasks on the main thread, useful for identifying worst contributors to input delay. [Learn how to avoid long main-thread tasks](https://web.dev/articles/optimize-long-tasks)",
+        "score": null,
+        "scoreDisplayMode": "notApplicable",
+        "metricSavings": {
+          "TBT": 0
+        },
+        "details": {
+          "headings": [
+            {
+              "valueType": "url",
+              "key": "url",
+              "label": "URL"
+            },
+            {
+              "label": "Start Time",
+              "key": "startTime",
+              "granularity": 1,
+              "valueType": "ms"
+            },
+            {
+              "label": "Duration",
+              "granularity": 1,
+              "key": "duration",
+              "valueType": "ms"
+            }
+          ],
+          "debugData": {
+            "type": "debugdata",
+            "tasks": [],
+            "urls": []
+          },
+          "items": [],
+          "type": "table"
+        }
+      },
+      "unused-css-rules": {
+        "id": "unused-css-rules",
+        "title": "Reduce unused CSS",
+        "description": "Reduce unused rules from stylesheets and defer CSS not used for above-the-fold content to decrease bytes consumed by network activity. [Learn how to reduce unused CSS](https://developer.chrome.com/docs/lighthouse/performance/unused-css-rules/).",
+        "score": 1,
+        "scoreDisplayMode": "metricSavings",
+        "metricSavings": {
+          "LCP": 0,
+          "FCP": 0
+        },
+        "details": {
+          "items": [],
+          "overallSavingsMs": 0,
+          "headings": [],
+          "overallSavingsBytes": 0,
+          "sortedBy": ["wastedBytes"],
+          "debugData": {
+            "type": "debugdata",
+            "metricSavings": {
+              "LCP": 0,
+              "FCP": 0
+            }
+          },
+          "type": "opportunity"
+        },
+        "numericValue": 0,
+        "numericUnit": "millisecond"
+      },
+      "metrics": {
+        "id": "metrics",
+        "title": "Metrics",
+        "description": "Collects all available metrics.",
+        "score": 1,
+        "scoreDisplayMode": "informative",
+        "details": {
+          "items": [
+            {
+              "observedSpeedIndexTs": 2373170189147,
+              "speedIndex": 783,
+              "observedDomContentLoadedTs": 2373170181364,
+              "observedLargestContentfulPaintTs": 2373170188816,
+              "cumulativeLayoutShiftMainFrame": 0,
+              "observedTimeOrigin": 0,
+              "observedFirstContentfulPaintAllFramesTs": 2373170188816,
+              "observedSpeedIndex": 148,
+              "observedFirstContentfulPaintTs": 2373170188816,
+              "observedNavigationStartTs": 2373170041374,
+              "observedLastVisualChange": 147,
+              "observedDomContentLoaded": 140,
+              "timeToFirstByte": 600,
+              "observedLastVisualChangeTs": 2373170188374,
+              "observedLoad": 140,
+              "observedNavigationStart": 0,
+              "observedTimeOriginTs": 2373170041374,
+              "observedFirstPaintTs": 2373170188816,
+              "cumulativeLayoutShift": 0,
+              "interactive": 783,
+              "firstContentfulPaint": 783,
+              "observedFirstVisualChange": 147,
+              "observedCumulativeLayoutShiftMainFrame": 0,
+              "observedTraceEndTs": 2373172511817,
+              "observedLargestContentfulPaintAllFrames": 147,
+              "observedFirstPaint": 147,
+              "observedTraceEnd": 2470,
+              "observedLoadTs": 2373170181422,
+              "observedLargestContentfulPaintAllFramesTs": 2373170188816,
+              "largestContentfulPaint": 783,
+              "observedLargestContentfulPaint": 147,
+              "observedFirstContentfulPaint": 147,
+              "observedFirstVisualChangeTs": 2373170188374,
+              "totalBlockingTime": 0,
+              "observedCumulativeLayoutShift": 0,
+              "observedFirstContentfulPaintAllFrames": 147,
+              "maxPotentialFID": 16
+            },
+            {
+              "lcpInvalidated": false
+            }
+          ],
+          "type": "debugdata"
+        },
+        "numericValue": 783,
+        "numericUnit": "millisecond"
+      },
+      "forced-reflow-insight": {
+        "id": "forced-reflow-insight",
+        "title": "Forced reflow",
+        "description": "A forced reflow occurs when JavaScript queries geometric properties (such as `offsetWidth`) after styles have been invalidated by a change to the DOM state. This can result in poor performance. Learn more about [forced reflows](https://developer.chrome.com/docs/performance/insights/forced-reflow) and possible mitigations.",
+        "score": 1,
+        "scoreDisplayMode": "numeric",
+        "details": {
+          "items": [
+            {
+              "items": [],
+              "type": "table",
+              "headings": [
+                {
+                  "label": "Source",
+                  "valueType": "source-location",
+                  "key": "source"
+                },
+                {
+                  "key": "reflowTime",
+                  "valueType": "ms",
+                  "label": "Total reflow time",
+                  "granularity": 1
+                }
+              ]
+            }
+          ],
+          "type": "list"
+        }
+      },
+      "network-rtt": {
+        "id": "network-rtt",
+        "title": "Network Round Trip Times",
+        "description": "Network round trip times (RTT) have a large impact on performance. If the RTT to an origin is high, it's an indication that servers closer to the user could improve performance. [Learn more about the Round Trip Time](https://hpbn.co/primer-on-latency-and-bandwidth/).",
+        "score": 1,
+        "scoreDisplayMode": "informative",
+        "displayValue": "0 ms",
+        "details": {
+          "headings": [
+            {
+              "key": "origin",
+              "valueType": "text",
+              "label": "URL"
+            },
+            {
+              "granularity": 1,
+              "key": "rtt",
+              "label": "Time Spent",
+              "valueType": "ms"
+            }
+          ],
+          "type": "table",
+          "sortedBy": ["rtt"],
+          "items": [
+            {
+              "rtt": 0.8999999999999999,
+              "origin": "https://info.cern.ch"
+            }
+          ]
+        },
+        "numericValue": 0.8999999999999999,
+        "numericUnit": "millisecond"
+      },
+      "layout-shifts": {
+        "id": "layout-shifts",
+        "title": "Avoid large layout shifts",
+        "description": "These are the largest layout shifts observed on the page. Each table item represents a single layout shift, and shows the element that shifted the most. Below each item are possible root causes that led to the layout shift. Some of these layout shifts may not be included in the CLS metric value due to [windowing](https://web.dev/articles/cls#what_is_cls). [Learn how to improve CLS](https://web.dev/articles/optimize-cls)",
+        "score": null,
+        "scoreDisplayMode": "notApplicable",
+        "metricSavings": {
+          "CLS": 0
+        },
+        "details": {
+          "items": [],
+          "type": "table",
+          "headings": [
+            {
+              "valueType": "node",
+              "label": "Element",
+              "key": "node",
+              "subItemsHeading": {
+                "key": "extra"
+              }
+            },
+            {
+              "valueType": "numeric",
+              "key": "score",
+              "label": "Layout shift score",
+              "granularity": 0.001,
+              "subItemsHeading": {
+                "key": "cause",
+                "valueType": "text"
+              }
+            }
+          ]
+        }
+      },
+      "document-latency-insight": {
+        "id": "document-latency-insight",
+        "title": "Document request latency",
+        "description": "Your first network request is the most important. [Reduce its latency](https://developer.chrome.com/docs/performance/insights/document-latency) by avoiding redirects, ensuring a fast server response, and enabling text compression.",
+        "score": null,
+        "scoreDisplayMode": "error",
+        "errorMessage": "missing document request timing"
+      },
+      "image-delivery-insight": {
+        "id": "image-delivery-insight",
+        "title": "Improve image delivery",
+        "description": "Reducing the download time of images can improve the perceived load time of the page and LCP. [Learn more about optimizing image size](https://developer.chrome.com/docs/performance/insights/image-delivery).",
+        "score": 1,
+        "scoreDisplayMode": "metricSavings",
+        "metricSavings": {
+          "LCP": 0,
+          "FCP": 0
+        },
+        "details": {
+          "type": "table",
+          "items": [],
+          "headings": [
+            {
+              "valueType": "node",
+              "key": "node"
+            },
+            {
+              "valueType": "url",
+              "label": "URL",
+              "key": "url",
+              "subItemsHeading": {
+                "key": "reason",
+                "valueType": "text"
+              }
+            },
+            {
+              "valueType": "bytes",
+              "key": "totalBytes",
+              "label": "Resource Size"
+            },
+            {
+              "key": "wastedBytes",
+              "label": "Est Savings",
+              "valueType": "bytes",
+              "subItemsHeading": {
+                "valueType": "bytes",
+                "key": "wastedBytes"
+              }
+            }
+          ],
+          "debugData": {
+            "type": "debugdata",
+            "wastedBytes": 0
+          }
+        },
+        "numericValue": 0,
+        "numericUnit": "byte"
+      },
+      "main-thread-tasks": {
+        "id": "main-thread-tasks",
+        "title": "Tasks",
+        "description": "Lists the toplevel main thread tasks that executed during page load.",
+        "score": 1,
+        "scoreDisplayMode": "informative",
+        "details": {
+          "type": "table",
+          "items": [
+            {
+              "startTime": 123.516,
+              "duration": 9.574
+            },
+            {
+              "duration": 5.165,
+              "startTime": 133.845
+            }
+          ],
+          "headings": [
+            {
+              "key": "startTime",
+              "granularity": 1,
+              "valueType": "ms",
+              "label": "Start Time"
+            },
+            {
+              "granularity": 1,
+              "label": "End Time",
+              "key": "duration",
+              "valueType": "ms"
+            }
+          ]
+        }
+      },
+      "cache-insight": {
+        "id": "cache-insight",
+        "title": "Use efficient cache lifetimes",
+        "description": "A long cache lifetime can speed up repeat visits to your page. [Learn more about caching](https://developer.chrome.com/docs/performance/insights/cache).",
+        "score": 1,
+        "scoreDisplayMode": "metricSavings",
+        "metricSavings": {
+          "LCP": 0,
+          "FCP": 0
+        },
+        "details": {
+          "debugData": {
+            "wastedBytes": 0,
+            "type": "debugdata"
+          },
+          "headings": [
+            {
+              "valueType": "url",
+              "label": "Request",
+              "key": "url"
+            },
+            {
+              "key": "cacheLifetimeMs",
+              "valueType": "ms",
+              "displayUnit": "duration",
+              "label": "Cache TTL"
+            },
+            {
+              "displayUnit": "kb",
+              "label": "Transfer Size",
+              "granularity": 1,
+              "key": "totalBytes",
+              "valueType": "bytes"
+            }
+          ],
+          "type": "table",
+          "items": []
+        },
+        "numericValue": 0,
+        "numericUnit": "byte"
+      },
+      "dom-size-insight": {
+        "id": "dom-size-insight",
+        "title": "Optimize DOM size",
+        "description": "A large DOM can increase the duration of style calculations and layout reflows, impacting page responsiveness. A large DOM will also increase memory usage. [Learn how to avoid an excessive DOM size](https://developer.chrome.com/docs/performance/insights/dom-size).",
+        "score": 1,
+        "scoreDisplayMode": "numeric",
+        "metricSavings": {
+          "INP": 0
+        },
+        "details": {
+          "type": "table",
+          "headings": [
+            {
+              "label": "Statistic",
+              "valueType": "text",
+              "key": "statistic"
+            },
+            {
+              "label": "Element",
+              "valueType": "node",
+              "key": "node"
+            },
+            {
+              "key": "value",
+              "valueType": "numeric",
+              "label": "Value"
+            }
+          ],
+          "debugData": {
+            "maxChildren": 4,
+            "type": "debugdata",
+            "totalElements": 15,
+            "maxDepth": 4
+          },
+          "items": [
+            {
+              "value": {
+                "granularity": 1,
+                "value": 15,
+                "type": "numeric"
+              },
+              "statistic": "Total elements"
+            },
+            {
+              "node": {
+                "lhId": "page-2-A",
+                "boundingRect": {
+                  "height": 17,
+                  "top": 100,
+                  "bottom": 117,
+                  "width": 155,
+                  "right": 203,
+                  "left": 48
+                },
+                "type": "node",
+                "snippet": "<a href=\"http://info.cern.ch/hypertext/WWW/TheProject.html\">",
+                "selector": "body > ul > li > a",
+                "path": "0,HTML,1,BODY,3,UL,0,LI,0,A",
+                "nodeLabel": "Browse the first website"
+              },
+              "value": {
+                "value": 4,
+                "type": "numeric",
+                "granularity": 1
+              },
+              "statistic": "DOM depth"
+            },
+            {
+              "node": {
+                "boundingRect": {
+                  "left": 8,
+                  "top": 100,
+                  "height": 72,
+                  "width": 964,
+                  "right": 972,
+                  "bottom": 172
+                },
+                "path": "0,HTML,1,BODY,3,UL",
+                "snippet": "<ul>",
+                "selector": "body > ul",
+                "lhId": "page-1-UL",
+                "nodeLabel": "Browse the first website\nBrowse the first website using the line-mode browser s…",
+                "type": "node"
+              },
+              "value": {
+                "type": "numeric",
+                "granularity": 1,
+                "value": 4
+              },
+              "statistic": "Most children"
+            }
+          ]
+        },
+        "numericValue": 15,
+        "numericUnit": "element"
+      },
+      "unminified-css": {
+        "id": "unminified-css",
+        "title": "Minify CSS",
+        "description": "Minifying CSS files can reduce network payload sizes. [Learn how to minify CSS](https://developer.chrome.com/docs/lighthouse/performance/unminified-css/).",
+        "score": 1,
+        "scoreDisplayMode": "metricSavings",
+        "metricSavings": {
+          "LCP": 0,
+          "FCP": 0
+        },
+        "details": {
+          "items": [],
+          "debugData": {
+            "type": "debugdata",
+            "metricSavings": {
+              "LCP": 0,
+              "FCP": 0
+            }
+          },
+          "type": "opportunity",
+          "overallSavingsMs": 0,
+          "sortedBy": ["wastedBytes"],
+          "overallSavingsBytes": 0,
+          "headings": []
+        },
+        "numericValue": 0,
+        "numericUnit": "millisecond"
+      },
+      "font-display-insight": {
+        "id": "font-display-insight",
+        "title": "Font display",
+        "description": "Consider setting [`font-display`](https://developer.chrome.com/docs/performance/insights/font-display) to `swap` or `optional` to ensure text is consistently visible. `swap` can be further optimized to mitigate layout shifts with [font metric overrides](https://developer.chrome.com/blog/font-fallbacks).",
+        "score": 1,
+        "scoreDisplayMode": "metricSavings",
+        "metricSavings": {
+          "INP": 0
+        },
+        "details": {
+          "skipSumming": ["wastedMs"],
+          "type": "table",
+          "items": [],
+          "headings": [
+            {
+              "valueType": "url",
+              "key": "url",
+              "label": "URL"
+            },
+            {
+              "key": "wastedMs",
+              "valueType": "ms",
+              "label": "Est Savings"
+            }
+          ]
+        },
+        "numericValue": 0,
+        "numericUnit": "millisecond"
+      },
+      "duplicated-javascript-insight": {
+        "id": "duplicated-javascript-insight",
+        "title": "Duplicated JavaScript",
+        "description": "Remove large, [duplicate JavaScript modules](https://developer.chrome.com/docs/performance/insights/duplicated-javascript) from bundles to reduce unnecessary bytes consumed by network activity",
+        "score": 1,
+        "scoreDisplayMode": "metricSavings",
+        "metricSavings": {
+          "LCP": 0,
+          "FCP": 0
+        },
+        "details": {
+          "items": [],
+          "type": "table",
+          "debugData": {
+            "type": "debugdata",
+            "wastedBytes": 0
+          },
+          "headings": [
+            {
+              "subItemsHeading": {
+                "valueType": "url",
+                "key": "url"
+              },
+              "label": "Source",
+              "key": "source",
+              "valueType": "code"
+            },
+            {
+              "key": "wastedBytes",
+              "subItemsHeading": {
+                "key": "sourceTransferBytes"
+              },
+              "label": "Duplicated bytes",
+              "valueType": "bytes",
+              "granularity": 10
+            }
+          ]
+        },
+        "numericValue": 0,
+        "numericUnit": "byte"
+      },
+      "total-blocking-time": {
+        "id": "total-blocking-time",
+        "title": "Total Blocking Time",
+        "description": "Sum of all time periods between FCP and Time to Interactive, when task length exceeded 50ms, expressed in milliseconds. [Learn more about the Total Blocking Time metric](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-total-blocking-time/).",
+        "score": 1,
+        "scoreDisplayMode": "numeric",
+        "displayValue": "0 ms",
+        "numericValue": 0,
+        "numericUnit": "millisecond"
+      },
+      "redirects": {
+        "id": "redirects",
+        "title": "Avoid multiple page redirects",
+        "description": "Redirects introduce additional delays before the page can be loaded. [Learn how to avoid page redirects](https://developer.chrome.com/docs/lighthouse/performance/redirects/).",
+        "score": 1,
+        "scoreDisplayMode": "metricSavings",
+        "metricSavings": {
+          "LCP": 0,
+          "FCP": 0
+        },
+        "details": {
+          "headings": [],
+          "type": "opportunity",
+          "overallSavingsMs": 0,
+          "items": []
+        },
+        "numericValue": 0,
+        "numericUnit": "millisecond"
+      },
+      "network-dependency-tree-insight": {
+        "id": "network-dependency-tree-insight",
+        "title": "Network dependency tree",
+        "description": "[Avoid chaining critical requests](https://developer.chrome.com/docs/performance/insights/network-dependency-tree) by reducing the length of chains, reducing the download size of resources, or deferring the download of unnecessary resources to improve page load",
+        "score": 1,
+        "scoreDisplayMode": "numeric",
+        "metricSavings": {
+          "LCP": 0
+        },
+        "details": {
+          "items": [
+            {
+              "type": "list-section",
+              "value": {
+                "chains": {
+                  "714E6258E2AB6AC26EDE28B7A9ECCDFB": {
+                    "isLongest": true,
+                    "navStartToEndTime": 139,
+                    "children": {},
+                    "url": "https://info.cern.ch/",
+                    "transferSize": 878
+                  }
+                },
+                "longestChain": {
+                  "duration": 139
+                },
+                "type": "network-tree"
+              }
+            },
+            {
+              "value": {
+                "value": "No origins were preconnected",
+                "type": "text"
+              },
+              "title": "Preconnected origins",
+              "description": "[preconnect](https://developer.chrome.com/docs/lighthouse/performance/uses-rel-preconnect/) hints help the browser establish a connection earlier in the page load, saving time when the first request for that origin is made. The following are the origins that the page preconnected to.",
+              "type": "list-section"
+            },
+            {
+              "description": "Add [preconnect](https://developer.chrome.com/docs/lighthouse/performance/uses-rel-preconnect/) hints to your most important origins, but try to use no more than 4",
+              "title": "Preconnect candidates",
+              "value": {
+                "type": "text",
+                "value": "No additional origins are good candidates for preconnecting"
+              },
+              "type": "list-section"
+            }
+          ],
+          "type": "list"
+        }
+      },
+      "unminified-javascript": {
+        "id": "unminified-javascript",
+        "title": "Minify JavaScript",
+        "description": "Minifying JavaScript files can reduce payload sizes and script parse time. [Learn how to minify JavaScript](https://developer.chrome.com/docs/lighthouse/performance/unminified-javascript/).",
+        "score": 1,
+        "scoreDisplayMode": "metricSavings",
+        "metricSavings": {
+          "LCP": 0,
+          "FCP": 0
+        },
+        "details": {
+          "items": [],
+          "overallSavingsMs": 0,
+          "headings": [],
+          "sortedBy": ["wastedBytes"],
+          "type": "opportunity",
+          "debugData": {
+            "metricSavings": {
+              "LCP": 0,
+              "FCP": 0
+            },
+            "type": "debugdata"
+          },
+          "overallSavingsBytes": 0
+        },
+        "warnings": [],
+        "numericValue": 0,
+        "numericUnit": "millisecond"
+      },
+      "unsized-images": {
+        "id": "unsized-images",
+        "title": "Image elements have explicit `width` and `height`",
+        "description": "Set an explicit width and height on image elements to reduce layout shifts and improve CLS. [Learn how to set image dimensions](https://web.dev/articles/optimize-cls#images_without_dimensions)",
+        "score": 1,
+        "scoreDisplayMode": "metricSavings",
+        "metricSavings": {
+          "CLS": 0
+        },
+        "details": {
+          "items": [],
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node"
+            },
+            {
+              "valueType": "url",
+              "label": "URL",
+              "key": "url"
+            }
+          ]
+        }
+      },
+      "bootup-time": {
+        "id": "bootup-time",
+        "title": "JavaScript execution time",
+        "description": "Consider reducing the time spent parsing, compiling, and executing JS. You may find delivering smaller JS payloads helps with this. [Learn how to reduce Javascript execution time](https://developer.chrome.com/docs/lighthouse/performance/bootup-time/).",
+        "score": null,
+        "scoreDisplayMode": "notApplicable",
+        "metricSavings": {
+          "TBT": 0
+        },
+        "details": {
+          "type": "table",
+          "headings": [
+            {
+              "valueType": "url",
+              "label": "URL",
+              "key": "url"
+            },
+            {
+              "granularity": 1,
+              "valueType": "ms",
+              "label": "Total CPU Time",
+              "key": "total"
+            },
+            {
+              "key": "scripting",
+              "valueType": "ms",
+              "granularity": 1,
+              "label": "Script Evaluation"
+            },
+            {
+              "key": "scriptParseCompile",
+              "label": "Script Parse",
+              "valueType": "ms",
+              "granularity": 1
+            }
+          ],
+          "items": []
+        },
+        "numericValue": 0,
+        "numericUnit": "millisecond"
+      },
+      "script-treemap-data": {
+        "id": "script-treemap-data",
+        "title": "Script Treemap Data",
+        "description": "Used for treemap app",
+        "score": 1,
+        "scoreDisplayMode": "informative",
+        "details": {
+          "nodes": [],
+          "type": "treemap-data"
+        }
+      },
+      "render-blocking-insight": {
+        "id": "render-blocking-insight",
+        "title": "Render-blocking requests",
+        "description": "Requests are blocking the page’s initial render, which may delay LCP. [Deferring or inlining](https://developer.chrome.com/docs/performance/insights/render-blocking) can move these network requests out of the critical path.",
+        "score": 1,
+        "scoreDisplayMode": "metricSavings",
+        "metricSavings": {
+          "LCP": 0,
+          "FCP": 0
+        },
+        "details": {
+          "items": [],
+          "headings": [
+            {
+              "label": "URL",
+              "key": "url",
+              "valueType": "url"
+            },
+            {
+              "label": "Transfer Size",
+              "valueType": "bytes",
+              "key": "totalBytes"
+            },
+            {
+              "valueType": "timespanMs",
+              "label": "Duration",
+              "key": "wastedMs"
+            }
+          ],
+          "type": "table"
+        },
+        "numericValue": 0,
+        "numericUnit": "millisecond"
+      },
+      "cls-culprits-insight": {
+        "id": "cls-culprits-insight",
+        "title": "Layout shift culprits",
+        "description": "Layout shifts occur when elements move absent any user interaction. [Investigate the causes of layout shifts](https://developer.chrome.com/docs/performance/insights/cls-culprit), such as elements being added, removed, or their fonts changing as the page loads.",
+        "score": 1,
+        "scoreDisplayMode": "numeric",
+        "metricSavings": {
+          "CLS": 0
+        },
+        "details": {
+          "items": [],
+          "type": "list"
+        }
+      },
+      "third-parties-insight": {
+        "id": "third-parties-insight",
+        "title": "3rd parties",
+        "description": "3rd party code can significantly impact load performance. [Reduce and defer loading of 3rd party code](https://developer.chrome.com/docs/performance/insights/third-parties) to prioritize your page’s content.",
+        "score": 1,
+        "scoreDisplayMode": "numeric",
+        "details": {
+          "type": "table",
+          "items": [],
+          "headings": [
+            {
+              "label": "3rd party",
+              "subItemsHeading": {
+                "valueType": "url",
+                "key": "url"
+              },
+              "valueType": "text",
+              "key": "entity"
+            },
+            {
+              "granularity": 1,
+              "subItemsHeading": {
+                "key": "transferSize"
+              },
+              "key": "transferSize",
+              "valueType": "bytes",
+              "label": "Transfer size"
+            },
+            {
+              "granularity": 1,
+              "key": "mainThreadTime",
+              "label": "Main thread time",
+              "subItemsHeading": {
+                "key": "mainThreadTime"
+              },
+              "valueType": "ms"
+            }
+          ]
+        }
+      },
+      "speed-index": {
+        "id": "speed-index",
+        "title": "Speed Index",
+        "description": "Speed Index shows how quickly the contents of a page are visibly populated. [Learn more about the Speed Index metric](https://developer.chrome.com/docs/lighthouse/performance/speed-index/).",
+        "score": 1,
+        "scoreDisplayMode": "numeric",
+        "displayValue": "0.8 s",
+        "numericValue": 783,
+        "numericUnit": "millisecond"
+      },
+      "interactive": {
+        "id": "interactive",
+        "title": "Time to Interactive",
+        "description": "Time to Interactive is the amount of time it takes for the page to become fully interactive. [Learn more about the Time to Interactive metric](https://developer.chrome.com/docs/lighthouse/performance/interactive/).",
+        "score": 1,
+        "scoreDisplayMode": "numeric",
+        "displayValue": "0.8 s",
+        "numericValue": 783,
+        "numericUnit": "millisecond"
+      },
+      "resource-summary": {
+        "id": "resource-summary",
+        "title": "Resources Summary",
+        "description": "Aggregates all network requests and groups them by type",
+        "score": 1,
+        "scoreDisplayMode": "informative",
+        "details": {
+          "headings": [
+            {
+              "label": "Resource Type",
+              "valueType": "text",
+              "key": "label"
+            },
+            {
+              "key": "requestCount",
+              "valueType": "numeric",
+              "label": "Requests"
+            },
+            {
+              "key": "transferSize",
+              "valueType": "bytes",
+              "label": "Transfer Size"
+            }
+          ],
+          "items": [
+            {
+              "transferSize": 878,
+              "label": "Document",
+              "requestCount": 1,
+              "resourceType": "document"
+            },
+            {
+              "transferSize": 878,
+              "requestCount": 1,
+              "resourceType": "total",
+              "label": "Total"
+            },
+            {
+              "requestCount": 0,
+              "resourceType": "stylesheet",
+              "transferSize": 0,
+              "label": "Stylesheet"
+            },
+            {
+              "transferSize": 0,
+              "label": "Image",
+              "requestCount": 0,
+              "resourceType": "image"
+            },
+            {
+              "requestCount": 0,
+              "resourceType": "media",
+              "label": "Media",
+              "transferSize": 0
+            },
+            {
+              "label": "Font",
+              "requestCount": 0,
+              "resourceType": "font",
+              "transferSize": 0
+            },
+            {
+              "transferSize": 0,
+              "label": "Script",
+              "requestCount": 0,
+              "resourceType": "script"
+            },
+            {
+              "requestCount": 0,
+              "resourceType": "other",
+              "label": "Other",
+              "transferSize": 0
+            },
+            {
+              "transferSize": 0,
+              "requestCount": 0,
+              "label": "Third-party",
+              "resourceType": "third-party"
+            }
+          ],
+          "type": "table"
+        }
+      },
+      "cumulative-layout-shift": {
+        "id": "cumulative-layout-shift",
+        "title": "Cumulative Layout Shift",
+        "description": "Cumulative Layout Shift measures the movement of visible elements within the viewport. [Learn more about the Cumulative Layout Shift metric](https://web.dev/articles/cls).",
+        "score": 1,
+        "scoreDisplayMode": "numeric",
+        "displayValue": "0",
+        "details": {
+          "items": [
+            {
+              "newEngineResultDiffered": false,
+              "cumulativeLayoutShiftMainFrame": 0,
+              "newEngineResult": {
+                "cumulativeLayoutShiftMainFrame": 0,
+                "cumulativeLayoutShift": 0
+              }
+            }
+          ],
+          "type": "debugdata"
+        },
+        "numericValue": 0,
+        "numericUnit": "unitless"
+      },
+      "largest-contentful-paint": {
+        "id": "largest-contentful-paint",
+        "title": "Largest Contentful Paint",
+        "description": "Largest Contentful Paint marks the time at which the largest text or image is painted. [Learn more about the Largest Contentful Paint metric](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-largest-contentful-paint/)",
+        "score": 1,
+        "scoreDisplayMode": "numeric",
+        "displayValue": "0.8 s",
+        "numericValue": 783,
+        "numericUnit": "millisecond"
+      },
+      "viewport-insight": {
+        "id": "viewport-insight",
+        "title": "Optimize viewport for mobile",
+        "description": "Tap interactions may be [delayed by up to 300 ms](https://developer.chrome.com/docs/performance/insights/viewport) if the viewport isn’t optimized for mobile",
+        "score": 0.5,
+        "scoreDisplayMode": "metricSavings",
+        "metricSavings": {
+          "INP": 0
+        },
+        "details": {
+          "items": [{}],
+          "type": "table",
+          "headings": [
+            {
+              "key": "node",
+              "valueType": "node"
+            }
+          ]
+        },
+        "numericValue": 0,
+        "numericUnit": "millisecond"
+      },
+      "total-byte-weight": {
+        "id": "total-byte-weight",
+        "title": "Avoids enormous network payloads",
+        "description": "Large network payloads cost users real money and are highly correlated with long load times. [Learn how to reduce payload sizes](https://developer.chrome.com/docs/lighthouse/performance/total-byte-weight/).",
+        "score": 1,
+        "scoreDisplayMode": "metricSavings",
+        "displayValue": "Total size was 1 KiB",
+        "details": {
+          "sortedBy": ["totalBytes"],
+          "items": [
+            {
+              "totalBytes": 878,
+              "url": "https://info.cern.ch/"
+            }
+          ],
+          "type": "table",
+          "headings": [
+            {
+              "label": "URL",
+              "valueType": "url",
+              "key": "url"
+            },
+            {
+              "key": "totalBytes",
+              "valueType": "bytes",
+              "label": "Transfer Size"
+            }
+          ]
+        },
+        "numericValue": 878,
+        "numericUnit": "byte"
+      },
+      "first-contentful-paint": {
+        "id": "first-contentful-paint",
+        "title": "First Contentful Paint",
+        "description": "First Contentful Paint marks the time at which the first text or image is painted. [Learn more about the First Contentful Paint metric](https://developer.chrome.com/docs/lighthouse/performance/first-contentful-paint/).",
+        "score": 1,
+        "scoreDisplayMode": "numeric",
+        "displayValue": "0.8 s",
+        "numericValue": 783,
+        "numericUnit": "millisecond"
+      },
+      "lcp-discovery-insight": {
+        "id": "lcp-discovery-insight",
+        "title": "LCP request discovery",
+        "description": "[Optimize LCP](https://developer.chrome.com/docs/performance/insights/lcp-discovery) by making the LCP image discoverable from the HTML immediately, and avoiding lazy-loading",
+        "score": null,
+        "scoreDisplayMode": "notApplicable"
+      },
+      "non-composited-animations": {
+        "id": "non-composited-animations",
+        "title": "Avoid non-composited animations",
+        "description": "Animations which are not composited can be janky and increase CLS. [Learn how to avoid non-composited animations](https://developer.chrome.com/docs/lighthouse/performance/non-composited-animations/)",
+        "score": null,
+        "scoreDisplayMode": "notApplicable",
+        "metricSavings": {
+          "CLS": 0
+        },
+        "details": {
+          "headings": [
+            {
+              "valueType": "node",
+              "subItemsHeading": {
+                "valueType": "text",
+                "key": "failureReason"
+              },
+              "label": "Element",
+              "key": "node"
+            }
+          ],
+          "type": "table",
+          "items": []
+        }
+      },
+      "mainthread-work-breakdown": {
+        "id": "mainthread-work-breakdown",
+        "title": "Minimizes main-thread work",
+        "description": "Consider reducing the time spent parsing, compiling and executing JS. You may find delivering smaller JS payloads helps with this. [Learn how to minimize main-thread work](https://developer.chrome.com/docs/lighthouse/performance/mainthread-work-breakdown/)",
+        "score": 1,
+        "scoreDisplayMode": "metricSavings",
+        "displayValue": "0.0 s",
+        "metricSavings": {
+          "TBT": 0
+        },
+        "details": {
+          "headings": [
+            {
+              "key": "groupLabel",
+              "valueType": "text",
+              "label": "Category"
+            },
+            {
+              "key": "duration",
+              "label": "Time Spent",
+              "granularity": 1,
+              "valueType": "ms"
+            }
+          ],
+          "sortedBy": ["duration"],
+          "items": [
+            {
+              "group": "other",
+              "duration": 23.424,
+              "groupLabel": "Other"
+            },
+            {
+              "duration": 4.652400000000001,
+              "group": "scriptEvaluation",
+              "groupLabel": "Script Evaluation"
+            },
+            {
+              "duration": 4.0668,
+              "group": "styleLayout",
+              "groupLabel": "Style & Layout"
+            },
+            {
+              "group": "paintCompositeRender",
+              "groupLabel": "Rendering",
+              "duration": 1.1868
+            },
+            {
+              "group": "parseHTML",
+              "groupLabel": "Parse HTML & CSS",
+              "duration": 0.3456
+            },
+            {
+              "group": "scriptParseCompile",
+              "groupLabel": "Script Parsing & Compilation",
+              "duration": 0.1776
+            }
+          ],
+          "type": "table"
+        },
+        "numericValue": 33.853199999999994,
+        "numericUnit": "millisecond"
+      },
+      "unused-javascript": {
+        "id": "unused-javascript",
+        "title": "Reduce unused JavaScript",
+        "description": "Reduce unused JavaScript and defer loading scripts until they are required to decrease bytes consumed by network activity. [Learn how to reduce unused JavaScript](https://developer.chrome.com/docs/lighthouse/performance/unused-javascript/).",
+        "score": 1,
+        "scoreDisplayMode": "metricSavings",
+        "metricSavings": {
+          "LCP": 0,
+          "FCP": 0
+        },
+        "details": {
+          "items": [],
+          "type": "opportunity",
+          "headings": [],
+          "sortedBy": ["wastedBytes"],
+          "overallSavingsMs": 0,
+          "debugData": {
+            "metricSavings": {
+              "FCP": 0,
+              "LCP": 0
+            },
+            "type": "debugdata"
+          },
+          "overallSavingsBytes": 0
+        },
+        "numericValue": 0,
+        "numericUnit": "millisecond"
+      },
+      "legacy-javascript-insight": {
+        "id": "legacy-javascript-insight",
+        "title": "Legacy JavaScript",
+        "description": "Polyfills and transforms enable older browsers to use new JavaScript features. However, many aren’t necessary for modern browsers. Consider modifying your JavaScript build process to not transpile [Baseline](https://web.dev/articles/baseline-and-polyfills) features, unless you know you must support older browsers. [Learn why most sites can deploy ES6+ code without transpiling](https://developer.chrome.com/docs/performance/insights/legacy-javascript).",
+        "score": 1,
+        "scoreDisplayMode": "metricSavings",
+        "metricSavings": {
+          "LCP": 0,
+          "FCP": 0
+        },
+        "details": {
+          "items": [],
+          "type": "table",
+          "headings": [
+            {
+              "subItemsHeading": {
+                "valueType": "source-location",
+                "key": "location"
+              },
+              "valueType": "url",
+              "label": "URL",
+              "key": "url"
+            },
+            {
+              "valueType": "code",
+              "subItemsHeading": {
+                "key": "signal"
+              },
+              "key": null
+            },
+            {
+              "key": "wastedBytes",
+              "label": "Wasted bytes",
+              "valueType": "bytes"
+            }
+          ],
+          "debugData": {
+            "wastedBytes": 0,
+            "type": "debugdata"
+          }
+        },
+        "numericValue": 0,
+        "numericUnit": "byte"
+      },
+      "lcp-breakdown-insight": {
+        "id": "lcp-breakdown-insight",
+        "title": "LCP breakdown",
+        "description": "Each [subpart has specific improvement strategies](https://developer.chrome.com/docs/performance/insights/lcp-breakdown). Ideally, most of the LCP time should be spent on loading the resources, not within delays.",
+        "score": 1,
+        "scoreDisplayMode": "informative",
+        "metricSavings": {
+          "LCP": 0
+        },
+        "details": {
+          "type": "list",
+          "items": [
+            {
+              "type": "table",
+              "items": [
+                {
+                  "label": "Time to first byte",
+                  "subpart": "timeToFirstByte",
+                  "duration": 0.589
+                },
+                {
+                  "label": "Element render delay",
+                  "duration": 146.853,
+                  "subpart": "elementRenderDelay"
+                }
+              ],
+              "headings": [
+                {
+                  "label": "Subpart",
+                  "key": "label",
+                  "valueType": "text"
+                },
+                {
+                  "key": "duration",
+                  "label": "Duration",
+                  "valueType": "ms"
+                }
+              ]
+            },
+            {
+              "snippet": "<h1>",
+              "lhId": "page-0-H1",
+              "boundingRect": {
+                "top": 8,
+                "width": 964,
+                "right": 972,
+                "left": 8,
+                "height": 37,
+                "bottom": 45
+              },
+              "type": "node",
+              "nodeLabel": "http://info.cern.ch - home of the first website",
+              "selector": "body > h1",
+              "path": "0,HTML,1,BODY,1,H1"
+            }
+          ]
+        }
+      }
+    },
+    "categories": {
+      "performance": {
+        "id": "performance",
+        "title": "Performance",
+        "score": 1,
+        "auditRefs": [
+          {
+            "id": "first-contentful-paint",
+            "weight": 10,
+            "group": "metrics",
+            "acronym": "FCP"
+          },
+          {
+            "id": "largest-contentful-paint",
+            "weight": 25,
+            "group": "metrics",
+            "acronym": "LCP"
+          },
+          {
+            "id": "total-blocking-time",
+            "weight": 30,
+            "group": "metrics",
+            "acronym": "TBT"
+          },
+          {
+            "id": "cumulative-layout-shift",
+            "weight": 25,
+            "group": "metrics",
+            "acronym": "CLS"
+          },
+          {
+            "id": "speed-index",
+            "weight": 10,
+            "group": "metrics",
+            "acronym": "SI"
+          },
+          {
+            "id": "cache-insight",
+            "weight": 0,
+            "group": "insights"
+          },
+          {
+            "id": "cls-culprits-insight",
+            "weight": 0,
+            "group": "insights"
+          },
+          {
+            "id": "document-latency-insight",
+            "weight": 0,
+            "group": "insights"
+          },
+          {
+            "id": "dom-size-insight",
+            "weight": 0,
+            "group": "insights"
+          },
+          {
+            "id": "duplicated-javascript-insight",
+            "weight": 0,
+            "group": "insights"
+          },
+          {
+            "id": "font-display-insight",
+            "weight": 0,
+            "group": "insights"
+          },
+          {
+            "id": "forced-reflow-insight",
+            "weight": 0,
+            "group": "insights"
+          },
+          {
+            "id": "image-delivery-insight",
+            "weight": 0,
+            "group": "insights"
+          },
+          {
+            "id": "inp-breakdown-insight",
+            "weight": 0,
+            "group": "insights"
+          },
+          {
+            "id": "lcp-breakdown-insight",
+            "weight": 0,
+            "group": "insights"
+          },
+          {
+            "id": "lcp-discovery-insight",
+            "weight": 0,
+            "group": "insights"
+          },
+          {
+            "id": "legacy-javascript-insight",
+            "weight": 0,
+            "group": "insights"
+          },
+          {
+            "id": "network-dependency-tree-insight",
+            "weight": 0,
+            "group": "insights"
+          },
+          {
+            "id": "render-blocking-insight",
+            "weight": 0,
+            "group": "insights"
+          },
+          {
+            "id": "third-parties-insight",
+            "weight": 0,
+            "group": "insights"
+          },
+          {
+            "id": "viewport-insight",
+            "weight": 0,
+            "group": "insights"
+          },
+          {
+            "id": "interactive",
+            "weight": 0,
+            "group": "hidden",
+            "acronym": "TTI"
+          },
+          {
+            "id": "max-potential-fid",
+            "weight": 0,
+            "group": "hidden"
+          },
+          {
+            "id": "unminified-css",
+            "weight": 0,
+            "group": "diagnostics"
+          },
+          {
+            "id": "unminified-javascript",
+            "weight": 0,
+            "group": "diagnostics"
+          },
+          {
+            "id": "unused-css-rules",
+            "weight": 0,
+            "group": "diagnostics"
+          },
+          {
+            "id": "unused-javascript",
+            "weight": 0,
+            "group": "diagnostics"
+          },
+          {
+            "id": "total-byte-weight",
+            "weight": 0,
+            "group": "diagnostics"
+          },
+          {
+            "id": "user-timings",
+            "weight": 0,
+            "group": "diagnostics"
+          },
+          {
+            "id": "bootup-time",
+            "weight": 0,
+            "group": "diagnostics"
+          },
+          {
+            "id": "mainthread-work-breakdown",
+            "weight": 0,
+            "group": "diagnostics"
+          },
+          {
+            "id": "long-tasks",
+            "weight": 0,
+            "group": "diagnostics"
+          },
+          {
+            "id": "non-composited-animations",
+            "weight": 0,
+            "group": "diagnostics"
+          },
+          {
+            "id": "unsized-images",
+            "weight": 0,
+            "group": "diagnostics"
+          },
+          {
+            "id": "network-requests",
+            "weight": 0,
+            "group": "hidden"
+          },
+          {
+            "id": "network-rtt",
+            "weight": 0,
+            "group": "hidden"
+          },
+          {
+            "id": "network-server-latency",
+            "weight": 0,
+            "group": "hidden"
+          },
+          {
+            "id": "main-thread-tasks",
+            "weight": 0,
+            "group": "hidden"
+          },
+          {
+            "id": "diagnostics",
+            "weight": 0,
+            "group": "hidden"
+          },
+          {
+            "id": "metrics",
+            "weight": 0,
+            "group": "hidden"
+          },
+          {
+            "id": "screenshot-thumbnails",
+            "weight": 0,
+            "group": "hidden"
+          },
+          {
+            "id": "final-screenshot",
+            "weight": 0,
+            "group": "hidden"
+          },
+          {
+            "id": "script-treemap-data",
+            "weight": 0,
+            "group": "hidden"
+          },
+          {
+            "id": "resource-summary",
+            "weight": 0,
+            "group": "hidden"
+          },
+          {
+            "id": "redirects",
+            "weight": 0,
+            "group": "hidden"
+          },
+          {
+            "id": "server-response-time",
+            "weight": 0,
+            "group": "hidden"
+          },
+          {
+            "id": "layout-shifts",
+            "weight": 0,
+            "group": "hidden"
+          }
+        ]
+      }
+    },
+    "categoryGroups": {
+      "a11y-navigation": {
+        "title": "Navigation",
+        "description": "These are opportunities to improve keyboard navigation in your application."
+      },
+      "a11y-tables-lists": {
+        "title": "Tables and lists",
+        "description": "These are opportunities to improve the experience of reading tabular or list data using assistive technology, like a screen reader."
+      },
+      "insights": {
+        "title": "Insights",
+        "description": "These insights are also available in the Chrome DevTools Performance Panel - [record a trace](https://developer.chrome.com/docs/devtools/performance/reference) to view more detailed information."
+      },
+      "seo-crawl": {
+        "title": "Crawling and Indexing",
+        "description": "To appear in search results, crawlers need access to your app."
+      },
+      "a11y-names-labels": {
+        "title": "Names and labels",
+        "description": "These are opportunities to improve the semantics of the controls in your application. This may enhance the experience for users of assistive technology, like a screen reader."
+      },
+      "a11y-audio-video": {
+        "title": "Audio and video",
+        "description": "These are opportunities to provide alternative content for audio and video. This may improve the experience for users with hearing or vision impairments."
+      },
+      "seo-content": {
+        "title": "Content Best Practices",
+        "description": "Format your HTML in a way that enables crawlers to better understand your app’s content."
+      },
+      "a11y-color-contrast": {
+        "title": "Contrast",
+        "description": "These are opportunities to improve the legibility of your content."
+      },
+      "a11y-language": {
+        "title": "Internationalization and localization",
+        "description": "These are opportunities to improve the interpretation of your content by users in different locales."
+      },
+      "seo-mobile": {
+        "title": "Mobile Friendly",
+        "description": "Make sure your pages are mobile friendly so users don’t have to pinch or zoom in order to read the content pages. [Learn how to make pages mobile-friendly](https://developers.google.com/search/mobile-sites/)."
+      },
+      "agent-accessibility": {
+        "title": "Agent Accessibility",
+        "description": "These audits highlight best practices for improving the accessibility of the website for AI agents."
+      },
+      "best-practices-trust-safety": {
+        "title": "Trust and Safety"
+      },
+      "diagnostics": {
+        "title": "Diagnostics",
+        "description": "More information about the performance of your application. These numbers don't [directly affect](https://developer.chrome.com/docs/lighthouse/performance/performance-scoring/) the Performance score."
+      },
+      "best-practices-browser-compat": {
+        "title": "Browser Compatibility"
+      },
+      "best-practices-general": {
+        "title": "General"
+      },
+      "best-practices-ux": {
+        "title": "User Experience"
+      },
+      "webmcp": {
+        "title": "WebMCP",
+        "description": "Audits validating WebMCP integration."
+      },
+      "agent-discoverability": {
+        "title": "Agent Discoverability",
+        "description": "These audits validate that websites expose discoverable resources, documentation, and catalogs for AI agents."
+      },
+      "a11y-best-practices": {
+        "title": "Best practices",
+        "description": "These items highlight common accessibility best practices."
+      },
+      "a11y-aria": {
+        "title": "ARIA",
+        "description": "These are opportunities to improve the usage of ARIA in your application which may enhance the experience for users of assistive technology, like a screen reader."
+      },
+      "metrics": {
+        "title": "Metrics"
+      }
+    },
+    "timing": {
+      "total": 6109.5
+    },
+    "entities": [
+      {
+        "name": "cern.ch",
+        "isFirstParty": true,
+        "isUnrecognized": true,
+        "origins": ["https://info.cern.ch"]
+      }
+    ]
+  },
+  "analysisUTCTimestamp": "2026-11-11T12:35:59.547Z"
+}

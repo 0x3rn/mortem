@@ -5,6 +5,7 @@ import {
   PlatformBindingError,
   ScanIntakeError,
   listScanEvidenceArtifactsInD1,
+  runPerformanceChecks,
   verifyScanEvidenceCompletenessInD1,
   type D1BoundStatementLike,
   type D1DatabaseLike,
@@ -36,12 +37,34 @@ const MIGRATION_0003_SQL = readFileSync(
   "utf8",
 );
 
-function createSqliteD1(): D1DatabaseLike {
+const MIGRATION_0004_SQL = readFileSync(
+  join(
+    __dirname,
+    "../../../packages/core/migrations/0004_page_performance_results.sql",
+  ),
+  "utf8",
+);
+
+const PSI_FIXTURE_DIR = join(
+  __dirname,
+  "../../../packages/core/src/__fixtures__/psi",
+);
+
+function psiFixture(name: string): string {
+  return readFileSync(join(PSI_FIXTURE_DIR, name), "utf8");
+}
+
+interface SqliteD1WithHandle extends D1DatabaseLike {
+  sqlite: DatabaseSync;
+}
+
+function createSqliteD1(): SqliteD1WithHandle {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec("PRAGMA foreign_keys = ON;");
   sqlite.exec(MIGRATION_0001_SQL);
   sqlite.exec(MIGRATION_0002_SQL);
   sqlite.exec(MIGRATION_0003_SQL);
+  sqlite.exec(MIGRATION_0004_SQL);
 
   function createBound(
     query: string,
@@ -89,6 +112,7 @@ function createSqliteD1(): D1DatabaseLike {
   }
 
   return {
+    sqlite,
     prepare(query: string) {
       const def = createBound(query, []);
       return {
@@ -1420,5 +1444,398 @@ describe("@mortem/scan-worker handlers", () => {
     expect(permScanRow?.status).toBe("failed");
     expect(permScanRow?.failure_class).toBe("ssrf_blocked");
     expect(permScanRow?.failure_reason).toContain("10.0.0.1");
+  });
+});
+
+describe("@mortem/scan-worker checking stage — PageSpeed Insights (THE-180)", () => {
+  const API_KEY = "AIzaSyWORKER-TEST-KEY-must-never-be-stored";
+  const MOBILE_SLOW = psiFixture("recorded-www.cnn.com-mobile.json");
+  const DESKTOP_FAST = psiFixture("recorded-info.cern.ch-desktop.json");
+  const QUOTA_429 = psiFixture("recorded-quota-exceeded-429.json");
+
+  function jsonResponse(body: string, status = 200): Response {
+    return new Response(body, {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  function createR2() {
+    const objects = new Map<string, string>();
+    const bucket: R2BucketLike = {
+      async put(key, value) {
+        const text =
+          typeof value === "string"
+            ? value
+            : new TextDecoder().decode(value as Uint8Array);
+        objects.set(key, text);
+        return { key, size: text.length };
+      },
+      async head(key) {
+        const found = objects.get(key);
+        return found === undefined ? null : { key, size: found.length };
+      },
+    };
+    return { objects, bucket };
+  }
+
+  /** Runs a queued scan to completion, seeding two captured pages instead of crawling. */
+  async function runPipeline(options: {
+    apiKey?: string;
+    withEvidenceBinding?: boolean;
+    psiFetch: typeof fetch;
+  }) {
+    const d1 = createSqliteD1();
+    const { scanId, workspaceId, siteId } = await seedWorkspaceAndQueuedScan(
+      d1,
+      "scan_psi_01",
+      "https://shop.example.test/",
+    );
+    const r2 = createR2();
+    const pending: ScanQueueMessage[] = [
+      {
+        kind: "website_scan",
+        scanId,
+        workspaceId,
+        siteId,
+        targetUrl: "https://shop.example.test/",
+        stage: "queued",
+        attempt: 1,
+        idempotencyKey: `${scanId}:discovering`,
+      },
+    ];
+
+    const env = {
+      ENVIRONMENT: "test",
+      DB: d1,
+      ...(options.withEvidenceBinding === false ? {} : { EVIDENCE: r2.bucket }),
+      ...(options.apiKey ? { PAGESPEED_API_KEY: options.apiKey } : {}),
+      SCAN_QUEUE: {
+        send: async (msg: ScanQueueMessage) => {
+          pending.push(msg);
+        },
+      },
+    };
+
+    const acks: ReturnType<typeof vi.fn>[] = [];
+    const retries: ReturnType<typeof vi.fn>[] = [];
+    let clock = 1_760_000_010_000;
+    let guard = 0;
+    while (pending.length > 0 && guard < 20) {
+      guard += 1;
+      const body = pending.shift()!;
+      const ack = vi.fn();
+      const retry = vi.fn();
+      acks.push(ack);
+      retries.push(retry);
+      clock += 1_000;
+      await worker.queue(
+        {
+          queue: "mortem-scans",
+          messages: [{ id: `msg_${guard}`, body, ack, retry }],
+        },
+        env,
+        {
+          now: () => clock,
+          psiFetch: options.psiFetch,
+          psiSleep: async (ms: number) => {
+            void ms;
+          },
+          stageHandlers: {
+            discovering: () => ({ pagesDiscovered: 2 }),
+            capturing: async (ctx) => {
+              for (const [id, url, template] of [
+                ["page_home", "https://shop.example.test/", "home"],
+                [
+                  "page_pricing",
+                  "https://shop.example.test/pricing",
+                  "pricing",
+                ],
+              ] as const) {
+                await ctx.d1
+                  .prepare(
+                    `INSERT INTO pages (
+                       id, scan_id, url, normalized_url, template_type, status_code,
+                       load_timings_json, capture_status, created_at, updated_at
+                     ) VALUES (?, ?, ?, ?, ?, 200, ?, 'captured', ?, ?)`,
+                  )
+                  .bind(
+                    id,
+                    ctx.scanId,
+                    url,
+                    url,
+                    template,
+                    JSON.stringify({ ttfbMs: 150, fcpMs: 800 }),
+                    ctx.nowMs,
+                    ctx.nowMs,
+                  )
+                  .run();
+              }
+              return { pagesCaptured: 2 };
+            },
+          },
+        },
+      );
+    }
+
+    return { d1, r2, scanId, acks, retries };
+  }
+
+  function count(d1: SqliteD1WithHandle, sql: string): number {
+    return (d1.sqlite.prepare(sql).get() as { n: number }).n;
+  }
+
+  function dumpAllText(d1: SqliteD1WithHandle, r2Objects: Map<string, string>) {
+    const tables = [
+      "scans",
+      "scan_events",
+      "pages",
+      "evidence_artifacts",
+      "findings",
+      "finding_occurrences",
+      "page_performance_results",
+    ];
+    const rows = tables.flatMap((table) =>
+      d1.sqlite.prepare(`SELECT * FROM ${table}`).all(),
+    );
+    return JSON.stringify(rows) + [...r2Objects.keys()].join("\n");
+  }
+
+  const fastDesktopSlowMobile: typeof fetch = (async (
+    input: RequestInfo | URL,
+  ) => {
+    const strategy = new URL(String(input)).searchParams.get("strategy");
+    return jsonResponse(strategy === "MOBILE" ? MOBILE_SLOW : DESKTOP_FAST);
+  }) as typeof fetch;
+
+  it("runs PageSpeed Insights inside the real checking stage and completes the scan", async () => {
+    const psiFetch = vi.fn(fastDesktopSlowMobile) as unknown as typeof fetch;
+    const { d1, r2, scanId } = await runPipeline({ apiKey: API_KEY, psiFetch });
+
+    const scan = d1.sqlite
+      .prepare(`SELECT status, usage_json FROM scans WHERE id = ?`)
+      .get(scanId) as { status: string; usage_json: string };
+    expect(scan.status).toBe("complete");
+
+    // 2 pages x 2 strategies.
+    expect(psiFetch).toHaveBeenCalledTimes(4);
+    const usage = JSON.parse(scan.usage_json) as {
+      psiCalls: number;
+      r2BytesWritten: number;
+    };
+    expect(usage.psiCalls).toBe(4);
+    expect(usage.r2BytesWritten).toBeGreaterThan(0);
+
+    expect([...r2.objects.keys()].sort()).toEqual([
+      `scans/${scanId}/pages/page_home/psi_raw_desktop.json`,
+      `scans/${scanId}/pages/page_home/psi_raw_mobile.json`,
+      `scans/${scanId}/pages/page_pricing/psi_raw_desktop.json`,
+      `scans/${scanId}/pages/page_pricing/psi_raw_mobile.json`,
+    ]);
+
+    const event = d1.sqlite
+      .prepare(
+        `SELECT message, checks_completed, metadata_json FROM scan_events
+         WHERE scan_id = ? AND stage = 'checking' ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(scanId) as {
+      message: string;
+      checks_completed: number;
+      metadata_json: string;
+    };
+    expect(event.message).toContain("PageSpeed Insights: 4/4 result(s)");
+    expect(event.checks_completed).toBe(4);
+    expect(JSON.parse(event.metadata_json).performance).toMatchObject({
+      resultsOk: 4,
+      resultsUnavailable: 0,
+      partial: false,
+      findingsWritten: 9,
+    });
+
+    expect(
+      count(
+        d1,
+        `SELECT COUNT(*) AS n FROM findings WHERE category = 'performance'`,
+      ),
+    ).toBe(9);
+    expect(
+      count(
+        d1,
+        `SELECT COUNT(*) AS n FROM page_performance_results WHERE status = 'ok'`,
+      ),
+    ).toBe(4);
+  });
+
+  it("never persists the API key anywhere (D1 tables or R2 keys)", async () => {
+    const { d1, r2 } = await runPipeline({
+      apiKey: API_KEY,
+      psiFetch: fastDesktopSlowMobile,
+    });
+    expect(dumpAllText(d1, r2.objects)).not.toContain(API_KEY);
+  });
+
+  it("sends the key only to the PageSpeed endpoint, as a query parameter", async () => {
+    const seen: string[] = [];
+    const psiFetch = (async (input: RequestInfo | URL) => {
+      seen.push(String(input));
+      return jsonResponse(DESKTOP_FAST);
+    }) as typeof fetch;
+    await runPipeline({ apiKey: API_KEY, psiFetch });
+    expect(seen.length).toBe(4);
+    for (const url of seen) {
+      const parsed = new URL(url);
+      expect(parsed.origin).toBe("https://www.googleapis.com");
+      expect(parsed.pathname).toBe("/pagespeedonline/v5/runPagespeed");
+      expect(parsed.searchParams.get("key")).toBe(API_KEY);
+    }
+  });
+
+  it("still completes the scan with explicit api_key_missing results when no key is configured", async () => {
+    const psiFetch = vi.fn() as unknown as typeof fetch;
+    const { d1, scanId } = await runPipeline({ psiFetch });
+
+    expect(psiFetch).not.toHaveBeenCalled();
+    const scan = d1.sqlite
+      .prepare(`SELECT status, usage_json FROM scans WHERE id = ?`)
+      .get(scanId) as { status: string; usage_json: string };
+    expect(scan.status).toBe("complete");
+    expect(JSON.parse(scan.usage_json).psiCalls).toBe(0);
+
+    const rows = d1.sqlite
+      .prepare(
+        `SELECT status, unavailable_reason, lab_json FROM page_performance_results`,
+      )
+      .all() as Array<{
+      status: string;
+      unavailable_reason: string;
+      lab_json: string | null;
+    }>;
+    expect(rows).toHaveLength(4);
+    expect(
+      rows.every(
+        (row) =>
+          row.status === "unavailable" &&
+          row.unavailable_reason === "api_key_missing" &&
+          row.lab_json === null,
+      ),
+    ).toBe(true);
+    expect(count(d1, `SELECT COUNT(*) AS n FROM findings`)).toBe(0);
+
+    const event = d1.sqlite
+      .prepare(
+        `SELECT message, metadata_json FROM scan_events
+         WHERE scan_id = ? AND stage = 'checking' ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(scanId) as { message: string; metadata_json: string };
+    expect(event.message).toContain("partial: 4 result(s) unavailable");
+    expect(
+      JSON.parse(event.metadata_json).performance.unavailable[0],
+    ).toMatchObject({ reason: "api_key_missing" });
+  });
+
+  it("keeps the scan going with partial performance data when PageSpeed quota is exhausted for one strategy", async () => {
+    const psiFetch = (async (input: RequestInfo | URL) => {
+      const strategy = new URL(String(input)).searchParams.get("strategy");
+      return strategy === "MOBILE"
+        ? jsonResponse(MOBILE_SLOW)
+        : jsonResponse(QUOTA_429, 429);
+    }) as typeof fetch;
+    const { d1, scanId } = await runPipeline({ apiKey: API_KEY, psiFetch });
+
+    const scan = d1.sqlite
+      .prepare(`SELECT status FROM scans WHERE id = ?`)
+      .get(scanId) as { status: string };
+    expect(scan.status).toBe("complete");
+
+    const rows = d1.sqlite
+      .prepare(
+        `SELECT strategy, status, unavailable_reason FROM page_performance_results ORDER BY page_id, strategy`,
+      )
+      .all() as Array<{
+      strategy: string;
+      status: string;
+      unavailable_reason: string | null;
+    }>;
+    expect(
+      rows
+        .filter((r) => r.strategy === "mobile")
+        .every((r) => r.status === "ok"),
+    ).toBe(true);
+    expect(
+      rows
+        .filter((r) => r.strategy === "desktop")
+        .every(
+          (r) =>
+            r.status === "unavailable" &&
+            r.unavailable_reason === "quota_exceeded",
+        ),
+    ).toBe(true);
+    expect(count(d1, `SELECT COUNT(*) AS n FROM findings`)).toBeGreaterThan(0);
+  });
+
+  it("fails the scan with an explicit reason, not a silent skip, when the EVIDENCE binding is missing", async () => {
+    const psiFetch = vi.fn() as unknown as typeof fetch;
+    const { d1, scanId, acks, retries } = await runPipeline({
+      apiKey: API_KEY,
+      withEvidenceBinding: false,
+      psiFetch,
+    });
+
+    expect(psiFetch).not.toHaveBeenCalled();
+    const scan = d1.sqlite
+      .prepare(
+        `SELECT status, failure_class, failure_reason FROM scans WHERE id = ?`,
+      )
+      .get(scanId) as {
+      status: string;
+      failure_class: string;
+      failure_reason: string;
+    };
+    expect(scan.status).toBe("failed");
+    expect(scan.failure_class).toBe("internal_error");
+    expect(scan.failure_reason).toContain("EVIDENCE");
+    // Non-retryable: acknowledged rather than burning queue retries.
+    expect(retries.every((retry) => retry.mock.calls.length === 0)).toBe(true);
+    expect(acks.at(-1)).toHaveBeenCalledOnce();
+  });
+
+  it("re-running the checking work for the same scan does not duplicate any rows", async () => {
+    const { d1, r2, scanId } = await runPipeline({
+      apiKey: API_KEY,
+      psiFetch: fastDesktopSlowMobile,
+    });
+
+    const snapshot = () => ({
+      results: count(d1, `SELECT COUNT(*) AS n FROM page_performance_results`),
+      findings: count(d1, `SELECT COUNT(*) AS n FROM findings`),
+      occurrences: count(d1, `SELECT COUNT(*) AS n FROM finding_occurrences`),
+      evidence: count(
+        d1,
+        `SELECT COUNT(*) AS n FROM evidence_artifacts WHERE kind = 'psi_raw'`,
+      ),
+      objects: r2.objects.size,
+    });
+    const before = snapshot();
+
+    // Replay the checking work directly, as a Cloudflare Queue redelivery would.
+    await runPerformanceChecks({
+      d1,
+      r2: r2.bucket,
+      scanId,
+      apiKey: API_KEY,
+      fetchFn: fastDesktopSlowMobile,
+      sleep: async (ms: number) => {
+        void ms;
+      },
+    });
+
+    expect(snapshot()).toEqual(before);
+    expect(before).toEqual({
+      results: 4,
+      findings: 9,
+      occurrences: 18,
+      evidence: 4,
+      objects: 4,
+    });
   });
 });

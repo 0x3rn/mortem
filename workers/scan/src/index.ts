@@ -19,6 +19,7 @@ import {
   persistPageCaptureEvidenceToR2AndD1,
   recordCapturedPageInD1,
   requireScanWorkerBindings,
+  runPerformanceChecks,
   resolveScanBudgets,
   updateScanUsageInD1,
   type BrowserBindingLike,
@@ -82,6 +83,10 @@ export interface QueueExecutionOptions {
   browserCapture?: BrowserSmokeCaptureFn;
   browserLauncher?: BrowserLauncherFn;
   discoveryFetch?: typeof fetch;
+  /** Injected `fetch` for PageSpeed Insights calls (tests); defaults to global `fetch`. */
+  psiFetch?: typeof fetch;
+  /** Injected backoff sleeper for PageSpeed Insights retries (tests). */
+  psiSleep?: (ms: number) => Promise<void>;
   stageHandlers?: ScanStageHandlerMap;
   now?: () => number;
 }
@@ -783,6 +788,68 @@ const worker = {
                 },
               }
             : {}),
+          checking: async (ctx) => {
+            if (!env.EVIDENCE) {
+              // Fail closed: PSI evidence must be stored, never silently skipped.
+              throw new PlatformBindingError(
+                "MISSING_BINDING",
+                "EVIDENCE",
+                "Cloudflare R2 binding 'EVIDENCE' is required to store PageSpeed Insights evidence.",
+              );
+            }
+
+            const summary = await runPerformanceChecks({
+              d1: ctx.d1,
+              r2: env.EVIDENCE,
+              scanId: ctx.scanId,
+              apiKey: env.PAGESPEED_API_KEY,
+              fetchFn: options.psiFetch,
+              sleep: options.psiSleep,
+              nowMs: ctx.nowMs,
+            });
+
+            await updateScanUsageInD1({
+              d1: ctx.d1,
+              scanId: ctx.scanId,
+              increment: {
+                psiCalls: summary.psiCalls,
+                r2BytesWritten: summary.r2BytesWritten,
+              },
+              nowMs: ctx.nowMs,
+            });
+
+            const totalResults = summary.resultsOk + summary.resultsUnavailable;
+            // Missing PSI data never ends the scan: other checks still run and the
+            // scoring stage excludes the performance category with a stated reason.
+            return {
+              outcome: "continue",
+              checksCompleted: summary.resultsOk,
+              message:
+                totalResults === 0
+                  ? "No captured pages were eligible for PageSpeed Insights analysis"
+                  : `PageSpeed Insights: ${summary.resultsOk}/${totalResults} result(s) across ${summary.pagesAnalyzed} page(s), ${summary.findingsWritten} performance finding(s)${
+                      summary.partial
+                        ? ` — partial: ${summary.resultsUnavailable} result(s) unavailable`
+                        : ""
+                    }`,
+              metadata: {
+                performance: {
+                  pagesAnalyzed: summary.pagesAnalyzed,
+                  resultsOk: summary.resultsOk,
+                  resultsUnavailable: summary.resultsUnavailable,
+                  psiCalls: summary.psiCalls,
+                  findingsWritten: summary.findingsWritten,
+                  partial: summary.partial,
+                  unavailable: summary.unavailable.map((entry) => ({
+                    pageId: entry.pageId,
+                    strategy: entry.strategy,
+                    reason: entry.reason,
+                    message: entry.message,
+                  })),
+                },
+              },
+            };
+          },
           ...options.stageHandlers,
         };
 

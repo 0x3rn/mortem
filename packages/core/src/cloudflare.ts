@@ -128,6 +128,8 @@ export interface ValidatedMortemWebBindings {
 
 export interface MortemScanBindings {
   ENVIRONMENT?: string;
+  /** Worker secret: Google PageSpeed Insights API key (THE-180). */
+  PAGESPEED_API_KEY?: string;
   DB?: D1DatabaseLike;
   EVIDENCE?: R2BucketLike;
   BROWSER?: BrowserBindingLike;
@@ -137,6 +139,7 @@ export interface MortemScanBindings {
 
 export interface ValidatedMortemScanBindings {
   ENVIRONMENT: string;
+  PAGESPEED_API_KEY?: string;
   DB: D1DatabaseLike;
   EVIDENCE: R2BucketLike;
   BROWSER?: BrowserBindingLike;
@@ -230,6 +233,7 @@ export function requireScanWorkerBindings(
 
   return {
     ENVIRONMENT: env.ENVIRONMENT ?? "development",
+    PAGESPEED_API_KEY: env.PAGESPEED_API_KEY,
     DB: env.DB,
     EVIDENCE: env.EVIDENCE,
     BROWSER: env.BROWSER,

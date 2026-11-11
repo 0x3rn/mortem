@@ -101,6 +101,8 @@ export * from "./crawl-budgets";
 export * from "./email-otp";
 export * from "./evidence-storage";
 export * from "./intake";
+export * from "./pagespeed";
+export * from "./performance-checks";
 export * from "./scan-history";
 export * from "./scan-pipeline";
 export * from "./schema/auth";

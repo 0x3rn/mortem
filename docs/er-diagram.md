@@ -1,6 +1,6 @@
 # Mortem Cloudflare D1 Entity-Relationship Diagram
 
-This document is the canonical relational schema reference for Mortem's Cloudflare D1 database (`mortem-db`). It covers both identity/workspace ownership (`0001_auth_and_workspaces.sql`) and the diagnostic crawl, evidence, finding, score, and report pipeline (`0002_scans_evidence_findings_reports.sql`).
+This document is the canonical relational schema reference for Mortem's Cloudflare D1 database (`mortem-db`). It covers both identity/workspace ownership (`0001_auth_and_workspaces.sql`) and the diagnostic crawl, evidence, finding, score, and report pipeline (`0002_scans_evidence_findings_reports.sql`), plus per-page PageSpeed Insights results (`0004_page_performance_results.sql`).
 
 ## Mermaid ER Diagram
 
@@ -25,6 +25,9 @@ erDiagram
   scans ||--o{ scores : "computes"
   scans ||--|| reports : "produces"
 
+  pages ||--o{ page_performance_results : "scored by PageSpeed (mobile + desktop)"
+  scans ||--o{ page_performance_results : "collects"
+  evidence_artifacts ||--o{ page_performance_results : "psi_raw source (ON DELETE SET NULL)"
   pages ||--o{ evidence_artifacts : "captures"
   pages ||--o{ finding_occurrences : "exhibits"
   findings ||--o{ finding_occurrences : "instantiates"
@@ -103,6 +106,26 @@ erDiagram
     integer checks_completed
     text metadata_json
     integer created_at
+  }
+
+  page_performance_results {
+    text id PK "{pageId}_perf_{strategy}"
+    text scan_id FK
+    text page_id FK
+    text strategy "mobile | desktop"
+    text status "ok | unavailable"
+    text unavailable_reason "api_key_missing | api_key_rejected | quota_exceeded | timeout | network_error | upstream_error | invalid_request | target_unreachable | lighthouse_runtime_error | invalid_response"
+    text unavailable_message
+    integer attempts
+    text lighthouse_version
+    text lighthouse_fetch_time
+    text lab_json "Lighthouse lab metrics; NULL when unavailable"
+    text field_json "CrUX field metrics or {available:false}; NULL when unavailable"
+    text audits_json "6 mapped Lighthouse 13 audits with cited asset URLs"
+    text navigation_timings_json "Browser Run timings (desktop row only)"
+    text psi_evidence_artifact_id FK
+    integer created_at
+    integer updated_at
   }
 
   pages {
@@ -210,3 +233,8 @@ erDiagram
    Enforced via SQL `CHECK` constraint and `validateCategoryScoreInput`:
    - When `included = 1`: `score` must be an integer in `[0, 100]` and `exclusion_reason` must be `NULL`.
    - When `included = 0` (partial scan): `score` must be `NULL` and `exclusion_reason` must be a non-empty string explaining why the category was excluded.
+4. **Honest PageSpeed Results (`page_performance_results`, migration `0004_page_performance_results.sql`)**:
+   Enforced via SQL `CHECK`; one row per `(page_id, strategy)`:
+   - When `status = 'ok'`: `lab_json` and `field_json` must be present and `unavailable_reason` / `unavailable_message` must be `NULL`.
+   - When `status = 'unavailable'`: `unavailable_reason` must be one of the allowed reasons, `unavailable_message` must be non-empty, and `lab_json` / `field_json` must be `NULL` — a Lighthouse score can never be stored without PageSpeed data behind it.
+   - `psi_evidence_artifact_id` is `ON DELETE SET NULL`; findings that cite the same artifact remain protected by the `RESTRICT` rule above.

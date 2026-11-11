@@ -1,0 +1,19 @@
+{
+  "_mortemFixture": {
+    "origin": "synthetic",
+    "note": "Hand-written to the documented PSI v5 schema; replace with output of scripts/record-psi-fixtures.mjs.",
+    "scenario": "Target blocks Google's fetcher: HTTP 200 with a Lighthouse runtimeError"
+  },
+  "kind": "pagespeedonline#result",
+  "id": "https://blocked.example.test/",
+  "lighthouseResult": {
+    "requestedUrl": "https://blocked.example.test/",
+    "finalUrl": "https://blocked.example.test/",
+    "lighthouseVersion": "12.6.0",
+    "runtimeError": {
+      "code": "FAILED_DOCUMENT_REQUEST",
+      "message": "Lighthouse was unable to reliably load the URL you requested because the page stopped responding."
+    },
+    "audits": {}
+  }
+}

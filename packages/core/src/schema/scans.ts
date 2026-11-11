@@ -13,6 +13,7 @@ import {
   type DiagnosticCategory,
   type FindingSeverity,
 } from "../index";
+import type { PsiStrategy, PsiUnavailableReason } from "../pagespeed";
 import { authSchema, users, workspaces } from "./auth";
 
 export const SCAN_STATUSES = [
@@ -493,6 +494,44 @@ export const scanIntakeEvents = sqliteTable(
   ],
 );
 
+export const pagePerformanceResults = sqliteTable(
+  "page_performance_results",
+  {
+    id: text("id").primaryKey(),
+    scanId: text("scan_id")
+      .notNull()
+      .references(() => scans.id, { onDelete: "cascade" }),
+    pageId: text("page_id")
+      .notNull()
+      .references(() => pages.id, { onDelete: "cascade" }),
+    strategy: text("strategy").$type<PsiStrategy>().notNull(),
+    status: text("status").$type<"ok" | "unavailable">().notNull(),
+    unavailableReason: text("unavailable_reason").$type<PsiUnavailableReason>(),
+    unavailableMessage: text("unavailable_message"),
+    attempts: integer("attempts").notNull().default(0),
+    lighthouseVersion: text("lighthouse_version"),
+    lighthouseFetchTime: text("lighthouse_fetch_time"),
+    labJson: text("lab_json"),
+    fieldJson: text("field_json"),
+    auditsJson: text("audits_json").notNull().default("[]"),
+    navigationTimingsJson: text("navigation_timings_json"),
+    psiEvidenceArtifactId: text("psi_evidence_artifact_id").references(
+      () => evidenceArtifacts.id,
+      { onDelete: "set null" },
+    ),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_page_performance_page_strategy").on(
+      table.pageId,
+      table.strategy,
+    ),
+    index("idx_page_performance_scan_id").on(table.scanId),
+    index("idx_page_performance_scan_status").on(table.scanId, table.status),
+  ],
+);
+
 export const scanSchema = {
   sites,
   scans,
@@ -505,6 +544,7 @@ export const scanSchema = {
   reports,
   reportShares,
   scanIntakeEvents,
+  pagePerformanceResults,
 };
 
 export const mortemSchema = {

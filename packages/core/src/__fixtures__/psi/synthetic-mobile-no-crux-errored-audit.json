@@ -1,0 +1,57 @@
+{
+  "_mortemFixture": {
+    "origin": "synthetic",
+    "note": "Hand-written to the documented PSI v5 schema; replace with output of scripts/record-psi-fixtures.mjs.",
+    "scenario": "Low-traffic site: no CrUX data at all, an errored audit, a missing audit and a null performance score"
+  },
+  "kind": "pagespeedonline#result",
+  "id": "https://tiny.example.test/",
+  "loadingExperience": {
+    "id": "https://tiny.example.test/",
+    "initial_url": "https://tiny.example.test/"
+  },
+  "lighthouseResult": {
+    "requestedUrl": "https://tiny.example.test/",
+    "finalUrl": "https://tiny.example.test/",
+    "lighthouseVersion": "12.6.0",
+    "fetchTime": "2026-10-14T20:16:00.000Z",
+    "categories": {
+      "performance": {
+        "id": "performance",
+        "title": "Performance",
+        "score": null
+      }
+    },
+    "audits": {
+      "largest-contentful-paint": {
+        "id": "largest-contentful-paint",
+        "score": null,
+        "scoreDisplayMode": "error",
+        "errorMessage": "NO_LCP"
+      },
+      "cumulative-layout-shift": {
+        "id": "cumulative-layout-shift",
+        "score": 1,
+        "scoreDisplayMode": "numeric",
+        "numericValue": 0
+      },
+      "first-contentful-paint": {
+        "id": "first-contentful-paint",
+        "score": 0.9,
+        "scoreDisplayMode": "numeric",
+        "numericValue": 1700
+      },
+      "server-response-time": {
+        "id": "server-response-time",
+        "score": null,
+        "scoreDisplayMode": "error",
+        "errorMessage": "Unable to determine response time"
+      },
+      "unused-javascript": {
+        "id": "unused-javascript",
+        "score": null,
+        "scoreDisplayMode": "notApplicable"
+      }
+    }
+  }
+}

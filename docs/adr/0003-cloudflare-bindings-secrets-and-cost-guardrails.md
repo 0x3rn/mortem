@@ -30,7 +30,7 @@ Stored via `wrangler secret put <NAME>` (and `.dev.vars` locally, never committe
 - `CLOUDFLARE_API_TOKEN` & `CLOUDFLARE_ACCOUNT_ID` (GitHub Actions CI deployment)
 - `MORTEM_ADMIN_SECRET` (gates `/api/internal/platform-smoke` in production)
 - `BETTER_AUTH_SECRET` & `BETTER_AUTH_URL` (Milestone `01` — `THE-171`)
-- `GOOGLE_PAGESPEED_API_KEY` (Milestone `03` — `THE-180`)
+- `PAGESPEED_API_KEY` (Milestone `03` — `THE-180`; set on `mortem-scan`. Renamed from the earlier draft name `GOOGLE_PAGESPEED_API_KEY` to match the THE-180 spec.)
 - `AI_GATEWAY_TOKEN` / `OPENAI_API_KEY` (Milestone `05` — `THE-191`)
 - `STRIPE_SECRET_KEY` & `STRIPE_WEBHOOK_SECRET` (Milestone `08` — `THE-203`)
 - `RESEND_API_KEY` (Milestone `10` — `THE-210`)
