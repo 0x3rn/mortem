@@ -22,7 +22,7 @@
     "@tailwindcss/postcss": "^4.3.3",
     "better-auth": "^1.7.7",
     "drizzle-orm": "^0.45.4",
-    "next": "16.4.0",
+    "next": "16.4.6",
     "postcss": "^8.5.30",
     "react": "19.3.0",
     "react-dom": "19.3.0",
@@ -34,7 +34,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.4.0",
+    "eslint-config-next": "16.4.6",
     "typescript": "^5",
     "wrangler": "^4.150.0"
   }
