@@ -1,6 +1,6 @@
 # Mortem Cloudflare D1 Entity-Relationship Diagram
 
-This document is the canonical relational schema reference for Mortem's Cloudflare D1 database (`mortem-db`). It covers both identity/workspace ownership (`0001_auth_and_workspaces.sql`) and the diagnostic crawl, evidence, finding, score, and report pipeline (`0002_scans_evidence_findings_reports.sql`), plus per-page PageSpeed Insights results (`0004_page_performance_results.sql`).
+This document is the canonical relational schema reference for Mortem's Cloudflare D1 database (`mortem-db`). It covers both identity/workspace ownership (`0001_auth_and_workspaces.sql`) and the diagnostic crawl, evidence, finding, score, and report pipeline (`0002_scans_evidence_findings_reports.sql`), plus per-page PageSpeed Insights results (`0004_page_performance_results.sql`) and page discovery sources (`0005_page_discovery_sources.sql`).
 
 ## Mermaid ER Diagram
 
@@ -137,6 +137,7 @@ erDiagram
     integer status_code
     text redirect_chain_json
     text load_timings_json
+    text discovery_sources_json "how discovery found the page: entry | sitemap | internal_link | canonical (0005)"
     text capture_status "pending | captured | partial | failed | skipped"
     text failure_reason
     integer created_at

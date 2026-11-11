@@ -20,6 +20,7 @@ import {
   recordCapturedPageInD1,
   requireScanWorkerBindings,
   runPerformanceChecks,
+  runSeoChecks,
   resolveScanBudgets,
   updateScanUsageInD1,
   type BrowserBindingLike,
@@ -790,13 +791,22 @@ const worker = {
             : {}),
           checking: async (ctx) => {
             if (!env.EVIDENCE) {
-              // Fail closed: PSI evidence must be stored, never silently skipped.
+              // Fail closed: checks read and write R2 evidence, never silently skipped.
               throw new PlatformBindingError(
                 "MISSING_BINDING",
                 "EVIDENCE",
-                "Cloudflare R2 binding 'EVIDENCE' is required to store PageSpeed Insights evidence.",
+                "Cloudflare R2 binding 'EVIDENCE' is required to run diagnostic checks (SEO evidence and PageSpeed Insights evidence).",
               );
             }
+
+            // SEO first: it only reads stored evidence and takes seconds, so a
+            // slow or failing PageSpeed call can never delay or block it.
+            const seo = await runSeoChecks({
+              d1: ctx.d1,
+              r2: env.EVIDENCE,
+              scanId: ctx.scanId,
+              nowMs: ctx.nowMs,
+            });
 
             const summary = await runPerformanceChecks({
               d1: ctx.d1,
@@ -819,20 +829,33 @@ const worker = {
             });
 
             const totalResults = summary.resultsOk + summary.resultsUnavailable;
+            const seoMessage = `SEO: ${seo.pagesAnalyzed}/${seo.pagesConsidered} page(s) analyzed, ${seo.findingsWritten} SEO finding(s)${
+              seo.pagesSkipped.length > 0
+                ? ` (${seo.pagesSkipped.length} skipped)`
+                : ""
+            }`;
+            const psiMessage =
+              totalResults === 0
+                ? "No captured pages were eligible for PageSpeed Insights analysis"
+                : `PageSpeed Insights: ${summary.resultsOk}/${totalResults} result(s) across ${summary.pagesAnalyzed} page(s), ${summary.findingsWritten} performance finding(s)${
+                    summary.partial
+                      ? ` — partial: ${summary.resultsUnavailable} result(s) unavailable`
+                      : ""
+                  }`;
             // Missing PSI data never ends the scan: other checks still run and the
             // scoring stage excludes the performance category with a stated reason.
             return {
               outcome: "continue",
-              checksCompleted: summary.resultsOk,
-              message:
-                totalResults === 0
-                  ? "No captured pages were eligible for PageSpeed Insights analysis"
-                  : `PageSpeed Insights: ${summary.resultsOk}/${totalResults} result(s) across ${summary.pagesAnalyzed} page(s), ${summary.findingsWritten} performance finding(s)${
-                      summary.partial
-                        ? ` — partial: ${summary.resultsUnavailable} result(s) unavailable`
-                        : ""
-                    }`,
+              checksCompleted: seo.pagesAnalyzed + summary.resultsOk,
+              message: `${seoMessage}; ${psiMessage}`,
               metadata: {
+                seo: {
+                  pagesConsidered: seo.pagesConsidered,
+                  pagesAnalyzed: seo.pagesAnalyzed,
+                  pagesSkipped: seo.pagesSkipped,
+                  findingsWritten: seo.findingsWritten,
+                  rulesFired: seo.rulesFired,
+                },
                 performance: {
                   pagesAnalyzed: summary.pagesAnalyzed,
                   resultsOk: summary.resultsOk,

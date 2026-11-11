@@ -1,11 +1,13 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type { DualViewportPageCaptureResult } from "./browser-capture";
 import type {
   D1BoundStatementLike,
   D1DatabaseLike,
   D1ExecResultLike,
   R2BucketLike,
+  R2ObjectBodyLike,
   R2ObjectMetaLike,
   R2PutOptionsLike,
 } from "./cloudflare";
@@ -23,6 +25,7 @@ export const MIGRATION_FILES = {
   scans: "0002_scans_evidence_findings_reports.sql",
   intake: "0003_intake_rate_limits.sql",
   performance: "0004_page_performance_results.sql",
+  discoverySources: "0005_page_discovery_sources.sql",
 } as const;
 
 export interface SqliteD1 extends D1DatabaseLike {
@@ -37,6 +40,7 @@ export function createSqliteD1(
     MIGRATION_FILES.auth,
     MIGRATION_FILES.scans,
     MIGRATION_FILES.performance,
+    MIGRATION_FILES.discoverySources,
   ],
   options: { withBatch?: boolean } = {},
 ): SqliteD1 {
@@ -122,6 +126,79 @@ export function createInMemoryR2(): InMemoryR2 {
       const found = objects.get(key);
       return found ? { key, size: found.bytes.byteLength } : null;
     },
+    async get(key): Promise<R2ObjectBodyLike | null> {
+      const found = objects.get(key);
+      if (!found) return null;
+      const bytes = found.bytes;
+      return {
+        key,
+        size: bytes.byteLength,
+        async arrayBuffer() {
+          return bytes.buffer.slice(
+            bytes.byteOffset,
+            bytes.byteOffset + bytes.byteLength,
+          ) as ArrayBuffer;
+        },
+        async text() {
+          return new TextDecoder().decode(bytes);
+        },
+      };
+    },
+  };
+}
+
+/**
+ * A minimal but complete capture result shaped like Browser Run output, so tests
+ * can store evidence through the production writer.
+ */
+export function buildCaptureResult(params: {
+  url: string;
+  html: string;
+  headers?: Record<string, string>;
+  finalUrl?: string;
+}): DualViewportPageCaptureResult {
+  const finalUrl = params.finalUrl ?? params.url;
+  const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+  const viewport = (name: "desktop" | "mobile") => ({
+    viewport: name,
+    width: name === "desktop" ? 1440 : 390,
+    height: name === "desktop" ? 900 : 844,
+    deviceScaleFactor: name === "desktop" ? 1 : 3,
+    requestedUrl: params.url,
+    finalUrl,
+    statusCode: 200,
+    responseHeaders: params.headers ?? { "content-type": "text/html" },
+    redirectChain: [],
+    title: "",
+    renderedHtml: params.html,
+    loadTimings: {},
+    consoleEntries: [],
+    networkSummary: {
+      totalRequests: 1,
+      totalResponses: 1,
+      statusBuckets: { "2xx": 1 },
+      failedRequests: [],
+    },
+    aboveTheFoldScreenshot: png,
+    fullPageScreenshot: png,
+    screenshotContentType: "image/png" as const,
+    networkIdleTimedOut: false,
+    botChallenge: { blocked: false, provider: null, reason: null },
+    captureStatus: "captured" as const,
+  });
+  return {
+    requestedUrl: params.url,
+    normalizedUrl: params.url,
+    finalUrl,
+    statusCode: 200,
+    captureStatus: "captured",
+    dbCaptureStatus: "captured",
+    failureClass: null,
+    failureReason: null,
+    redirectChain: [],
+    loadTimings: {},
+    desktop: viewport("desktop"),
+    mobile: viewport("mobile"),
   };
 }
 

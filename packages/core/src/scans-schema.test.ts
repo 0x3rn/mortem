@@ -40,6 +40,11 @@ const MIGRATION_0002_SQL = readFileSync(
   join(__dirname, "../migrations/0002_scans_evidence_findings_reports.sql"),
   "utf8",
 );
+// Columns added later that the Drizzle schema reads (THE-181).
+const MIGRATION_0005_SQL = readFileSync(
+  join(__dirname, "../migrations/0005_page_discovery_sources.sql"),
+  "utf8",
+);
 
 function createSqliteD1Adapter(): {
   d1: D1DatabaseLike;
@@ -50,6 +55,7 @@ function createSqliteD1Adapter(): {
   sqlite.exec(MIGRATION_0000_SQL);
   sqlite.exec(MIGRATION_0001_SQL);
   sqlite.exec(MIGRATION_0002_SQL);
+  sqlite.exec(MIGRATION_0005_SQL);
 
   function createBound(
     query: string,

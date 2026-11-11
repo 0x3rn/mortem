@@ -294,6 +294,9 @@ export const pages = sqliteTable(
     statusCode: integer("status_code"),
     redirectChainJson: text("redirect_chain_json").notNull().default("[]"),
     loadTimingsJson: text("load_timings_json").notNull().default("{}"),
+    discoverySourcesJson: text("discovery_sources_json")
+      .notNull()
+      .default("[]"),
     captureStatus: text("capture_status")
       .$type<PageCaptureStatus>()
       .notNull()

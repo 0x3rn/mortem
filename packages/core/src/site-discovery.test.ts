@@ -27,12 +27,17 @@ const MIGRATION_0002_SQL = readFileSync(
   join(__dirname, "../migrations/0002_scans_evidence_findings_reports.sql"),
   "utf8",
 );
+const MIGRATION_0005_SQL = readFileSync(
+  join(__dirname, "../migrations/0005_page_discovery_sources.sql"),
+  "utf8",
+);
 
 function createSqliteD1(): D1DatabaseLike {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec("PRAGMA foreign_keys = ON;");
   sqlite.exec(MIGRATION_0001_SQL);
   sqlite.exec(MIGRATION_0002_SQL);
+  sqlite.exec(MIGRATION_0005_SQL);
 
   function createBound(
     query: string,
@@ -435,6 +440,28 @@ describe("Site discovery via robots.txt, XML sitemaps, and Cheerio internal link
     expect(rows.results?.every((r) => r.capture_status === "pending")).toBe(
       true,
     );
+
+    // THE-181: how each page was found is kept, so SEO checks know sitemap membership.
+    const sources = await d1
+      .prepare(
+        `SELECT normalized_url, discovery_sources_json FROM pages WHERE scan_id = 'scan_disc_1'`,
+      )
+      .bind().all!<{
+      normalized_url: string;
+      discovery_sources_json: string;
+    }>();
+    const byUrl = new Map(
+      (sources.results ?? []).map((r) => [
+        r.normalized_url,
+        JSON.parse(r.discovery_sources_json) as string[],
+      ]),
+    );
+    for (const candidate of discovery.selectedPages) {
+      expect(byUrl.get(candidate.normalizedUrl)).toEqual(candidate.sources);
+    }
+    expect(
+      discovery.selectedPages.some((c) => c.sources.includes("sitemap")),
+    ).toBe(true);
   });
 
   it("classifies candidate URLs and enforces plan page caps", () => {

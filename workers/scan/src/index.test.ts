@@ -5,6 +5,7 @@ import {
   PlatformBindingError,
   ScanIntakeError,
   listScanEvidenceArtifactsInD1,
+  persistPageCaptureEvidenceToR2AndD1,
   runPerformanceChecks,
   verifyScanEvidenceCompletenessInD1,
   type D1BoundStatementLike,
@@ -14,6 +15,11 @@ import {
 } from "@mortem/core";
 import { describe, expect, it, vi } from "vitest";
 import worker, { type QueueBatch, type ScanQueueMessage } from "./index";
+// Test-only helpers shared with @mortem/core tests (never shipped in the Worker).
+import {
+  buildCaptureResult,
+  createInMemoryR2,
+} from "../../../packages/core/src/test-support";
 
 const MIGRATION_0001_SQL = readFileSync(
   join(
@@ -44,6 +50,13 @@ const MIGRATION_0004_SQL = readFileSync(
   ),
   "utf8",
 );
+const MIGRATION_0005_SQL = readFileSync(
+  join(
+    __dirname,
+    "../../../packages/core/migrations/0005_page_discovery_sources.sql",
+  ),
+  "utf8",
+);
 
 const PSI_FIXTURE_DIR = join(
   __dirname,
@@ -65,6 +78,7 @@ function createSqliteD1(): SqliteD1WithHandle {
   sqlite.exec(MIGRATION_0002_SQL);
   sqlite.exec(MIGRATION_0003_SQL);
   sqlite.exec(MIGRATION_0004_SQL);
+  sqlite.exec(MIGRATION_0005_SQL);
 
   function createBound(
     query: string,
@@ -1837,5 +1851,193 @@ describe("@mortem/scan-worker checking stage — PageSpeed Insights (THE-180)", 
       evidence: 4,
       objects: 4,
     });
+  });
+});
+
+describe("@mortem/scan-worker checking stage — SEO (THE-181)", () => {
+  const seoHead = (title: string, canonical: string) => `
+<title>${title}</title>
+<meta name="description" content="Acme Analytics shows small teams which features customers use and what to fix next.">
+<link rel="canonical" href="${canonical}">
+<meta property="og:title" content="${title}"><meta property="og:description" content="Acme">
+<meta property="og:image" content="https://shop.example.test/og.png"><meta property="og:url" content="${canonical}">
+<meta name="twitter:card" content="summary">`;
+  const seoPage = (title: string, canonical: string) =>
+    `<!doctype html><html lang="en"><head>${seoHead(title, canonical)}</head><body><h1>Acme</h1></body></html>`;
+  const TITLE = "Acme Analytics — Product analytics for small teams";
+
+  async function runSeoPipeline(r2: R2BucketLike) {
+    const d1 = createSqliteD1();
+    const { scanId, workspaceId, siteId } = await seedWorkspaceAndQueuedScan(
+      d1,
+      "scan_seo_01",
+      "https://shop.example.test/",
+    );
+    const pending: ScanQueueMessage[] = [
+      {
+        kind: "website_scan",
+        scanId,
+        workspaceId,
+        siteId,
+        targetUrl: "https://shop.example.test/",
+        stage: "queued",
+        attempt: 1,
+        idempotencyKey: `${scanId}:discovering`,
+      },
+    ];
+    const env = {
+      ENVIRONMENT: "test",
+      DB: d1,
+      EVIDENCE: r2,
+      SCAN_QUEUE: {
+        send: async (msg: ScanQueueMessage) => {
+          pending.push(msg);
+        },
+      },
+    };
+    const psiFetch = vi.fn() as unknown as typeof fetch;
+    let clock = 1_760_000_010_000;
+    for (let guard = 0; pending.length > 0 && guard < 20; guard += 1) {
+      const body = pending.shift()!;
+      clock += 1_000;
+      await worker.queue(
+        {
+          queue: "mortem-scans",
+          messages: [
+            { id: `seo_${guard}`, body, ack: vi.fn(), retry: vi.fn() },
+          ],
+        },
+        env,
+        {
+          now: () => clock,
+          psiFetch,
+          stageHandlers: {
+            discovering: () => ({ pagesDiscovered: 2 }),
+            capturing: async (ctx) => {
+              const pages: Array<{
+                id: string;
+                url: string;
+                sources: string[];
+                html: string;
+                headers: Record<string, string>;
+              }> = [
+                {
+                  id: "page_home",
+                  url: "https://shop.example.test/",
+                  sources: ["entry"],
+                  html: seoPage(TITLE, "https://shop.example.test/"),
+                  headers: { "content-type": "text/html" },
+                },
+                {
+                  id: "page_old",
+                  url: "https://shop.example.test/old",
+                  sources: ["sitemap"],
+                  html: seoPage(TITLE, "https://shop.example.test/old"),
+                  headers: {
+                    "content-type": "text/html",
+                    "x-robots-tag": "noindex",
+                  },
+                },
+              ];
+              for (const p of pages) {
+                await ctx.d1
+                  .prepare(
+                    `INSERT INTO pages (id, scan_id, url, normalized_url, template_type, status_code,
+                       discovery_sources_json, capture_status, created_at, updated_at)
+                     VALUES (?, ?, ?, ?, 'other', 200, ?, 'captured', ?, ?)`,
+                  )
+                  .bind(
+                    p.id,
+                    ctx.scanId,
+                    p.url,
+                    p.url,
+                    JSON.stringify(p.sources),
+                    ctx.nowMs,
+                    ctx.nowMs,
+                  )
+                  .run();
+                await persistPageCaptureEvidenceToR2AndD1({
+                  d1: ctx.d1,
+                  r2,
+                  scanId: ctx.scanId,
+                  pageId: p.id,
+                  capture: buildCaptureResult({
+                    url: p.url,
+                    html: p.html,
+                    headers: p.headers,
+                  }),
+                  nowMs: ctx.nowMs,
+                });
+              }
+              return { pagesCaptured: 2 };
+            },
+          },
+        },
+      );
+    }
+    return { d1, scanId, psiFetch };
+  }
+
+  it("writes SEO findings from stored evidence in the real checking stage, before PageSpeed", async () => {
+    const { d1, scanId } = await runSeoPipeline(createInMemoryR2());
+    const scan = d1.sqlite
+      .prepare(`SELECT status FROM scans WHERE id = ?`)
+      .get(scanId) as { status: string };
+    expect(scan.status).toBe("complete");
+
+    const ruleIds = (
+      d1.sqlite
+        .prepare(
+          `SELECT check_id FROM findings WHERE scan_id = ? ORDER BY check_id`,
+        )
+        .all(scanId) as Array<{ check_id: string }>
+    ).map((r) => r.check_id);
+    expect(ruleIds).toEqual([
+      "seo.indexability.noindex",
+      "seo.indexability.sitemap-conflict",
+      // Both pages also share one meta description.
+      "seo.meta-description.duplicate",
+      "seo.title.duplicate",
+    ]);
+
+    const event = d1.sqlite
+      .prepare(
+        `SELECT message, metadata_json, checks_completed FROM scan_events
+         WHERE scan_id = ? AND stage = 'checking' ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(scanId) as {
+      message: string;
+      metadata_json: string;
+      checks_completed: number;
+    };
+    expect(event.message).toContain(
+      "SEO: 2/2 page(s) analyzed, 4 SEO finding(s)",
+    );
+    expect(event.message).toContain("PageSpeed Insights");
+    expect(event.checks_completed).toBe(2);
+    expect(JSON.parse(event.metadata_json).seo).toMatchObject({
+      pagesAnalyzed: 2,
+      findingsWritten: 4,
+      pagesSkipped: [],
+    });
+  });
+
+  it("fails the scan explicitly when stored HTML cannot be read back from R2", async () => {
+    const full = createInMemoryR2();
+    const writeOnly: R2BucketLike = { put: full.put, head: full.head };
+    const { d1, scanId, psiFetch } = await runSeoPipeline(writeOnly);
+    const scan = d1.sqlite
+      .prepare(
+        `SELECT status, failure_class, failure_reason FROM scans WHERE id = ?`,
+      )
+      .get(scanId) as {
+      status: string;
+      failure_class: string;
+      failure_reason: string;
+    };
+    expect(scan.status).toBe("failed");
+    expect(scan.failure_class).toBe("internal_error");
+    expect(scan.failure_reason).toContain("cannot read objects");
+    expect(psiFetch).not.toHaveBeenCalled();
   });
 });

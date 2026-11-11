@@ -1,10 +1,6 @@
-import {
-  PlatformBindingError,
-  type D1BoundStatementLike,
-  type D1DatabaseLike,
-  type R2BucketLike,
-} from "./cloudflare";
+import { type D1DatabaseLike, type R2BucketLike } from "./cloudflare";
 import { writeEvidenceArtifactToR2AndD1 } from "./evidence-storage";
+import { replaceFindingsByPrefix, wrapDbError } from "./findings-store";
 import {
   PSI_DEFAULT_CONCURRENCY,
   PSI_STAGE_BUDGET_MS,
@@ -195,31 +191,6 @@ function buildNavigationTimingsJson(
   });
 }
 
-async function executeStatements(
-  d1: D1DatabaseLike,
-  statements: D1BoundStatementLike[],
-): Promise<void> {
-  if (statements.length === 0) return;
-  if (typeof d1.batch === "function") {
-    // D1 batches run as a single transaction.
-    await d1.batch(statements);
-    return;
-  }
-  for (const statement of statements) {
-    await statement.run();
-  }
-}
-
-function wrapDbError(action: string, err: unknown): PlatformBindingError {
-  const reason = err instanceof Error ? err.message : "Unknown D1 error";
-  return new PlatformBindingError(
-    "DATABASE_QUERY_FAILED",
-    "DB",
-    `Failed to ${action}: ${reason}`,
-    { cause: err },
-  );
-}
-
 async function upsertPerformanceResult(params: {
   d1: D1DatabaseLike;
   scanId: string;
@@ -395,72 +366,22 @@ export async function replacePerformanceFindings(params: {
   inputs: readonly PerformanceRuleInput[];
   nowMs: number;
 }): Promise<{ findings: number; occurrences: number }> {
-  const candidates = evaluatePerformanceRules(params.inputs);
-  const statements: D1BoundStatementLike[] = [
-    params.d1
-      .prepare(
-        `DELETE FROM findings WHERE scan_id = ? AND check_id LIKE 'perf.%'`,
-      )
-      .bind(params.scanId),
-  ];
-
-  let occurrences = 0;
-  for (const candidate of candidates) {
-    const findingId = `${params.scanId}_${candidate.ruleId}`;
-    statements.push(
-      params.d1
-        .prepare(
-          `INSERT INTO findings (
-             id, scan_id, check_id, check_version, category, severity, effort, impact,
-             priority_score, title, measured_value_json, threshold_json, fix_role,
-             status, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`,
-        )
-        .bind(
-          findingId,
-          params.scanId,
-          candidate.ruleId,
-          candidate.ruleVersion,
-          candidate.category,
-          candidate.severity,
-          candidate.effort,
-          candidate.impact,
-          candidate.priorityScore,
-          candidate.title,
-          JSON.stringify(candidate.measured),
-          JSON.stringify(candidate.threshold),
-          candidate.fixRole,
-          params.nowMs,
-          params.nowMs,
-        ),
-    );
-    for (const occurrence of candidate.occurrences) {
-      occurrences += 1;
-      statements.push(
-        params.d1
-          .prepare(
-            `INSERT INTO finding_occurrences (
-               id, finding_id, page_id, evidence_artifact_id, selector, excerpt, bbox_json, created_at
-             ) VALUES (?, ?, ?, ?, NULL, ?, NULL, ?)`,
-          )
-          .bind(
-            `${findingId}_${occurrence.pageId}_${occurrence.strategy}`,
-            findingId,
-            occurrence.pageId,
-            occurrence.evidenceArtifactId,
-            occurrence.excerpt,
-            params.nowMs,
-          ),
-      );
-    }
-  }
-
-  try {
-    await executeStatements(params.d1, statements);
-  } catch (err) {
-    throw wrapDbError("write performance findings", err);
-  }
-  return { findings: candidates.length, occurrences };
+  return replaceFindingsByPrefix({
+    d1: params.d1,
+    scanId: params.scanId,
+    checkIdPrefix: "perf.",
+    label: "performance",
+    nowMs: params.nowMs,
+    candidates: evaluatePerformanceRules(params.inputs).map((candidate) => ({
+      ...candidate,
+      occurrences: candidate.occurrences.map((occurrence) => ({
+        pageId: occurrence.pageId,
+        evidenceArtifactId: occurrence.evidenceArtifactId,
+        excerpt: occurrence.excerpt,
+        occurrenceKey: occurrence.strategy,
+      })),
+    })),
+  });
 }
 
 export async function runPerformanceChecks(

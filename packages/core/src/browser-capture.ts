@@ -69,6 +69,10 @@ export interface BotChallengeDetectionResult {
   reason: string | null;
 }
 
+/** Appended to a rendered HTML snapshot that was cut at `maxBytesPerPage`. */
+export const HTML_TRUNCATION_MARKER =
+  "<!-- [MORTEM_TRUNCATED: HTML exceeded maxBytesPerPage budget] -->";
+
 export interface ViewportCaptureEvidence {
   viewport: CaptureViewportName;
   width: number;
@@ -721,7 +725,7 @@ export async function captureSingleViewportInIsolatedContext(params: {
       htmlTruncated = true;
       renderedHtml = `${new TextDecoder("utf-8", { fatal: false }).decode(
         rawHtmlBytes.subarray(0, maxBytesPerPage),
-      )}\n<!-- [MORTEM_TRUNCATED: HTML exceeded maxBytesPerPage budget] -->`;
+      )}\n${HTML_TRUNCATION_MARKER}`;
     }
 
     const title = (await page.title().catch(() => "")) || finalUrl;

@@ -1342,10 +1342,16 @@ export async function persistDiscoveredPagesInD1(
         .prepare(
           `UPDATE pages
            SET template_type = ?,
+               discovery_sources_json = ?,
                updated_at = ?
            WHERE id = ?`,
         )
-        .bind(candidate.templateType, nowMs, existing.id)
+        .bind(
+          candidate.templateType,
+          JSON.stringify(candidate.sources),
+          nowMs,
+          existing.id,
+        )
         .run();
 
       records.push({
@@ -1368,11 +1374,12 @@ export async function persistDiscoveredPagesInD1(
             status_code,
             redirect_chain_json,
             load_timings_json,
+            discovery_sources_json,
             capture_status,
             failure_reason,
             created_at,
             updated_at
-          ) VALUES (?, ?, ?, ?, ?, NULL, '[]', '{}', 'pending', NULL, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, NULL, '[]', '{}', ?, 'pending', NULL, ?, ?)`,
         )
         .bind(
           pageId,
@@ -1380,6 +1387,7 @@ export async function persistDiscoveredPagesInD1(
           candidate.url,
           candidate.normalizedUrl,
           candidate.templateType,
+          JSON.stringify(candidate.sources),
           nowMs,
           nowMs,
         )
