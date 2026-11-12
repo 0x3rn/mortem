@@ -113,6 +113,8 @@ export * from "./scan-pipeline";
 export * from "./schema/auth";
 export * from "./schema/scans";
 export * from "./seo-checks";
+export * from "./security-checks";
+export * from "./security-checks-runner";
 export * from "./seo-checks-runner";
 export * from "./site-discovery";
 export * from "./workspaces";

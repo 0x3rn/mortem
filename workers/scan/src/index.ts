@@ -24,7 +24,10 @@ import {
   requireScanWorkerBindings,
   runAccessibilityChecks,
   runPerformanceChecks,
+  runSecurityChecks,
   runSeoChecks,
+  createPreflightHttpsRedirectProbe,
+  type HttpsRedirectProbeFn,
   resolveScanBudgets,
   updateScanUsageInD1,
   type BrowserBindingLike,
@@ -95,6 +98,8 @@ export interface QueueExecutionOptions {
   psiSleep?: (ms: number) => Promise<void>;
   /** axe-core source for capture; defaults to the bundled build, `null` disables it (tests). */
   axeSource?: string | null;
+  /** HTTP → HTTPS redirect check for security (tests); `null` disables it. */
+  securityProbe?: HttpsRedirectProbeFn | null;
   /** Pages captured per queue invocation (default `CAPTURE_PAGES_PER_RUN`). */
   capturePagesPerRun?: number;
   /** Delay before the next capture run (default `CAPTURE_REQUEUE_DELAY_SECONDS`). */
@@ -1139,6 +1144,22 @@ const worker = {
               nowMs: ctx.nowMs,
             });
 
+            // Security next: stored evidence plus one plain request to the
+            // homepage's http:// address (THE-183). Tests inject or disable it.
+            const security = await runSecurityChecks({
+              d1: ctx.d1,
+              r2: env.EVIDENCE,
+              scanId: ctx.scanId,
+              nowMs: ctx.nowMs,
+              probe:
+                options.securityProbe !== undefined
+                  ? options.securityProbe
+                  : env.ENVIRONMENT === "test"
+                    ? null
+                    : createPreflightHttpsRedirectProbe(),
+            });
+            const securityMessage = `Security: ${security.pagesChecked}/${security.pagesConsidered} page(s) checked, ${security.findingsWritten} security finding(s)`;
+
             const summary = await runPerformanceChecks({
               d1: ctx.d1,
               r2: env.EVIDENCE,
@@ -1185,9 +1206,20 @@ const worker = {
               checksCompleted:
                 seo.pagesAnalyzed +
                 accessibility.viewportsAudited +
+                security.pagesChecked +
                 summary.resultsOk,
-              message: `${seoMessage}; ${a11yMessage}; ${psiMessage}`,
+              message: `${seoMessage}; ${a11yMessage}; ${securityMessage}; ${psiMessage}`,
               metadata: {
+                security: {
+                  pagesConsidered: security.pagesConsidered,
+                  pagesChecked: security.pagesChecked,
+                  pagesSkipped: security.pagesSkipped,
+                  pagesWithoutSecurityEvidence:
+                    security.pagesWithoutSecurityEvidence,
+                  probe: security.probe,
+                  findingsWritten: security.findingsWritten,
+                  rulesFired: security.rulesFired,
+                },
                 accessibility: {
                   viewportsAudited: accessibility.viewportsAudited,
                   findingsWritten: accessibility.findingsWritten,

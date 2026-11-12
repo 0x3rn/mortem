@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { AxeCaptureResult } from "./axe-runner";
 import type { DualViewportPageCaptureResult } from "./browser-capture";
+import type { DocumentSecurityEvidence } from "./security-checks";
 import type {
   D1BoundStatementLike,
   D1DatabaseLike,
@@ -158,6 +159,10 @@ export function buildCaptureResult(params: {
   headers?: Record<string, string>;
   finalUrl?: string;
   accessibility?: Partial<Record<"desktop" | "mobile", AxeCaptureResult>>;
+  /** Desktop document security evidence (THE-183). */
+  security?: DocumentSecurityEvidence;
+  /** Desktop console entries (e.g. Chrome mixed-content messages). */
+  consoleTexts?: string[];
 }): DualViewportPageCaptureResult {
   const finalUrl = params.finalUrl ?? params.url;
   const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -174,7 +179,14 @@ export function buildCaptureResult(params: {
     title: "",
     renderedHtml: params.html,
     loadTimings: {},
-    consoleEntries: [],
+    consoleEntries:
+      name === "desktop"
+        ? (params.consoleTexts ?? []).map((text) => ({
+            level: "warning" as const,
+            text,
+            timestampMs: 1,
+          }))
+        : [],
     networkSummary: {
       totalRequests: 1,
       totalResponses: 1,
@@ -189,6 +201,9 @@ export function buildCaptureResult(params: {
     captureStatus: "captured" as const,
     ...(params.accessibility?.[name]
       ? { accessibility: params.accessibility[name] }
+      : {}),
+    ...(params.security && name === "desktop"
+      ? { security: params.security }
       : {}),
   });
   return {

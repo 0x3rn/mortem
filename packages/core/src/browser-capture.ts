@@ -1,4 +1,11 @@
 import { runAxeInPage, type AxeCaptureResult } from "./axe-runner";
+import {
+  parseSetCookieHeaders,
+  type CapturedInsecureRequest,
+  type CapturedTlsDetails,
+  type DocumentSecurityEvidence,
+  type ParsedSetCookie,
+} from "./security-checks";
 import type { BrowserBindingLike, D1DatabaseLike } from "./cloudflare";
 import { READ_ONLY_SCAN_POLICY, isAllowedScanMethod } from "./index";
 import {
@@ -99,6 +106,8 @@ export interface ViewportCaptureEvidence {
   captureStatus: "captured" | "partial" | "blocked";
   /** axe-core run for this viewport (THE-182); absent when the page was a bot challenge. */
   accessibility?: AxeCaptureResult;
+  /** TLS, Set-Cookie flags and insecure requests of the document (THE-183). */
+  security?: DocumentSecurityEvidence;
 }
 
 export interface DualViewportPageCaptureResult {
@@ -134,6 +143,17 @@ export interface PlaywrightResponseLike {
   status(): number;
   headers(): Record<string, string>;
   request(): PlaywrightRequestLike;
+  /** All headers including `set-cookie` (joined with "
+"); optional in fakes. */
+  allHeaders?(): Promise<Record<string, string>>;
+  /** TLS details of an HTTPS response (validFrom/validTo in Unix seconds). */
+  securityDetails?(): Promise<{
+    protocol?: string;
+    issuer?: string;
+    subjectName?: string;
+    validFrom?: number;
+    validTo?: number;
+  } | null>;
 }
 
 export interface PlaywrightRouteLike {
@@ -556,6 +576,69 @@ function toUint8Array(input: Uint8Array | ArrayBuffer): Uint8Array {
  * `PerformanceObserver` timings, and full-page + above-the-fold screenshots.
  * Always closes the `Page` and `BrowserContext` in `finally`.
  */
+/** Caps the insecure-request list stored per page (mixed-content evidence). */
+export const MAX_RECORDED_INSECURE_REQUESTS = 50;
+
+/**
+ * Reads the document's TLS details and Set-Cookie flags (THE-183). Nothing is
+ * guessed: anything the browser cannot report is stored as a reason instead.
+ * Cookie values are never kept.
+ */
+export async function collectDocumentSecurity(
+  response: PlaywrightResponseLike | null,
+  finalUrl: string,
+  insecureRequests: readonly CapturedInsecureRequest[],
+): Promise<DocumentSecurityEvidence> {
+  const isHttps = finalUrl.toLowerCase().startsWith("https://");
+  let tls: CapturedTlsDetails | null = null;
+  let tlsUnavailableReason: string | null = null;
+  if (!isHttps) {
+    tlsUnavailableReason = "The page is not served over HTTPS.";
+  } else if (!response || typeof response.securityDetails !== "function") {
+    tlsUnavailableReason = "The browser did not expose TLS details.";
+  } else {
+    try {
+      const details = await response.securityDetails();
+      if (details) {
+        tls = {
+          protocol: details.protocol ?? null,
+          issuer: details.issuer ?? null,
+          subjectName: details.subjectName ?? null,
+          validFrom:
+            typeof details.validFrom === "number" ? details.validFrom : null,
+          validTo: typeof details.validTo === "number" ? details.validTo : null,
+        };
+      } else {
+        tlsUnavailableReason =
+          "The browser reported no TLS details for this response (for example it was served from cache).";
+      }
+    } catch (err) {
+      tlsUnavailableReason = `Reading TLS details failed: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+
+  let setCookies: ParsedSetCookie[] = [];
+  let cookiesUnavailableReason: string | null = null;
+  if (!response || typeof response.allHeaders !== "function") {
+    cookiesUnavailableReason = "The browser did not expose Set-Cookie headers.";
+  } else {
+    try {
+      const all = await response.allHeaders();
+      setCookies = parseSetCookieHeaders(all["set-cookie"]);
+    } catch (err) {
+      cookiesUnavailableReason = `Reading Set-Cookie headers failed: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+
+  return {
+    tls,
+    tlsUnavailableReason,
+    setCookies,
+    cookiesUnavailableReason,
+    insecureRequests: isHttps ? [...insecureRequests] : [],
+  };
+}
+
 export async function captureSingleViewportInIsolatedContext(params: {
   browser: PlaywrightBrowserLike;
   viewportName: CaptureViewportName;
@@ -589,6 +672,7 @@ export async function captureSingleViewportInIsolatedContext(params: {
   const statusBuckets: Record<string, number> = {};
   let totalRequests = 0;
   let totalResponses = 0;
+  const insecureRequests: CapturedInsecureRequest[] = [];
   let blockedNavigationFailure: {
     url: string;
     reason: string;
@@ -602,6 +686,17 @@ export async function captureSingleViewportInIsolatedContext(params: {
     await page.route("**/*", async (route) => {
       const req = route.request();
       totalRequests += 1;
+      // Plain-HTTP requests from an HTTPS page are mixed content (THE-183).
+      if (
+        params.targetUrl.startsWith("https://") &&
+        /^(http|ws):/i.test(req.url()) &&
+        insecureRequests.length < MAX_RECORDED_INSECURE_REQUESTS
+      ) {
+        insecureRequests.push({
+          url: req.url(),
+          resourceType: req.resourceType(),
+        });
+      }
       const decision = inspectBrowserRequestSafety({
         url: req.url(),
         method: req.method(),
@@ -741,6 +836,11 @@ export async function captureSingleViewportInIsolatedContext(params: {
     const title = (await page.title().catch(() => "")) || finalUrl;
     const statusCode = response ? response.status() : null;
     const responseHeaders = response ? { ...response.headers() } : {};
+    const security = await collectDocumentSecurity(
+      response,
+      finalUrl,
+      insecureRequests,
+    );
 
     const aboveTheFoldBuffer = await page.screenshot({
       type: "png",
@@ -809,6 +909,7 @@ export async function captureSingleViewportInIsolatedContext(params: {
       botChallenge,
       captureStatus,
       ...(accessibility ? { accessibility } : {}),
+      security,
     };
   } finally {
     if (page) {

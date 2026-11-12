@@ -418,6 +418,8 @@ export async function persistPageCaptureEvidenceToR2AndD1(params: {
       redirectChain: capture.redirectChain,
       desktop: capture.desktop.responseHeaders,
       mobile: capture.mobile.responseHeaders,
+      // TLS, cookie flags (never values) and insecure requests (THE-183).
+      security: capture.desktop.security ?? null,
     },
     null,
     2,

@@ -62,12 +62,14 @@ if (!chromiumPath) {
 describe.skipIf(!chromiumPath)("runAxeInPage in real Chromium", () => {
   let browser: Browser;
 
+  // Launching and closing Chromium can exceed the 10 s default while the
+  // other browser test files run in parallel.
   beforeAll(async () => {
     browser = await launchLocalChromium(chromiumPath!);
-  });
+  }, 60_000);
   afterAll(async () => {
     await browser?.close();
-  });
+  }, 30_000);
 
   async function audit(
     html: string,

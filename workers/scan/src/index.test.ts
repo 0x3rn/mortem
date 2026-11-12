@@ -2074,10 +2074,19 @@ describe("@mortem/scan-worker checking stage — SEO (THE-181)", () => {
     const ruleIds = (
       d1.sqlite
         .prepare(
-          `SELECT check_id FROM findings WHERE scan_id = ? ORDER BY check_id`,
+          `SELECT check_id FROM findings WHERE scan_id = ? AND check_id LIKE 'seo.%' ORDER BY check_id`,
         )
         .all(scanId) as Array<{ check_id: string }>
     ).map((r) => r.check_id);
+    // The same stage also runs the security checks (THE-183) on these pages.
+    const securityRuleIds = (
+      d1.sqlite
+        .prepare(
+          `SELECT check_id FROM findings WHERE scan_id = ? AND category = 'security' ORDER BY check_id`,
+        )
+        .all(scanId) as Array<{ check_id: string }>
+    ).map((r) => r.check_id);
+    expect(securityRuleIds).toContain("sec.hsts.missing");
     expect(ruleIds).toEqual([
       "seo.indexability.noindex",
       "seo.indexability.sitemap-conflict",
@@ -2100,7 +2109,14 @@ describe("@mortem/scan-worker checking stage — SEO (THE-181)", () => {
       "SEO: 2/2 page(s) analyzed, 4 SEO finding(s)",
     );
     expect(event.message).toContain("PageSpeed Insights");
-    expect(event.checks_completed).toBe(2);
+    expect(event.message).toContain("Security: 2/2 page(s) checked");
+    // 2 pages analysed for SEO + 2 checked for security.
+    expect(event.checks_completed).toBe(4);
+    expect(JSON.parse(event.metadata_json).security).toMatchObject({
+      pagesChecked: 2,
+      // Tests never make network requests: the http:// check is disabled.
+      probe: { status: "not_run" },
+    });
     expect(JSON.parse(event.metadata_json).seo).toMatchObject({
       pagesAnalyzed: 2,
       findingsWritten: 4,
