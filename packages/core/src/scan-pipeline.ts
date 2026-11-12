@@ -45,7 +45,14 @@ export interface ScanStageHandlerContext {
 }
 
 export interface ScanStageExecutionResult {
-  outcome?: "continue" | "complete" | "partial" | "failed";
+  /**
+   * `requeue`: the stage made progress but has more to do, so the same stage
+   * runs again after `requeueDelaySeconds` (for example one page per run, to
+   * stay inside per-invocation CPU and browser-launch limits). No stage event
+   * is written, so the stage idempotency key stays open for the next run.
+   */
+  outcome?: "continue" | "complete" | "partial" | "failed" | "requeue";
+  requeueDelaySeconds?: number;
   message?: string;
   pagesDiscovered?: number;
   pagesCaptured?: number;
@@ -80,7 +87,12 @@ export interface AdvanceScanStageOptions {
 
 export interface AdvanceScanStageResult {
   action:
-    "advanced" | "completed" | "failed" | "skipped_idempotent" | "missing_scan";
+    | "advanced"
+    | "completed"
+    | "failed"
+    | "requeued"
+    | "skipped_idempotent"
+    | "missing_scan";
   scanId: string;
   executedStage: ActiveScanStage;
   currentStatus: ScanStage;
@@ -406,6 +418,38 @@ export async function advanceScanStageInD1(
         outcome: "continue",
         message: DEFAULT_STAGE_MESSAGES[executedStage](canonicalTargetUrl),
       };
+
+  if (stageResult.outcome === "requeue") {
+    if (scanQueue) {
+      await scanQueue.send(
+        {
+          kind: "website_scan",
+          scanId: scanRow.id,
+          workspaceId: scanRow.workspace_id,
+          siteId: scanRow.site_id,
+          targetUrl: canonicalTargetUrl,
+          stage: executedStage,
+          attempt: 1,
+          idempotencyKey,
+          ...(message.pageId ? { pageId: message.pageId } : {}),
+        },
+        {
+          delaySeconds: Math.max(
+            0,
+            Math.floor(stageResult.requeueDelaySeconds ?? 0),
+          ),
+        },
+      );
+    }
+    return {
+      action: "requeued",
+      scanId: scanRow.id,
+      executedStage,
+      currentStatus: executedStage,
+      nextStage: executedStage,
+      idempotencyKey,
+    };
+  }
 
   const pagesDiscovered =
     stageResult.pagesDiscovered ?? latestCounters.pagesDiscovered;

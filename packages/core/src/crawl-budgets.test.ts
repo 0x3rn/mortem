@@ -3,6 +3,7 @@ import { capturePageAcrossViewports } from "./browser-capture";
 import {
   CrawlBudgetEnforcer,
   DEFAULT_SCAN_BUDGETS,
+  classifyBrowserRunLimitError,
   classifyScanErrorForRetry,
   createBrowserSessionPool,
   fetchWithAbortTimeout,
@@ -167,6 +168,39 @@ describe("THE-179 crawl budgets, retry classification, and browser session clean
     const fresh = new CrawlBudgetEnforcer(budgets, startMs);
     expect(fresh.browserMs).toBe(0);
     expect(fresh.pagesCaptured).toBe(0);
+  });
+
+  it("recognises Browser Run's daily limit and new-browser rate limit (Workers Free plan)", () => {
+    // Real message seen on staging (wrangler tail, 2026-11-11).
+    expect(
+      classifyBrowserRunLimitError(
+        "Unable to create new browser: code: 429: message: Rate limit exceeded",
+      ),
+    ).toBe("rate_limited");
+    expect(
+      classifyBrowserRunLimitError(
+        "Unable to create new browser: code: 429: message: Browser time limit exceeded for today",
+      ),
+    ).toBe("daily_limit");
+    expect(
+      classifyBrowserRunLimitError(
+        "Unable to create new browser: Too Many Requests",
+      ),
+    ).toBe("rate_limited");
+    expect(
+      classifyBrowserRunLimitError("Unable to create new browser: code: 429"),
+    ).toBe("rate_limited");
+    // Not Browser Run limits.
+    expect(
+      classifyBrowserRunLimitError("page.goto: Timeout 25000ms exceeded."),
+    ).toBeNull();
+    expect(
+      classifyBrowserRunLimitError("Upstream returned 429 for https://site/"),
+    ).toBeNull();
+    expect(
+      classifyBrowserRunLimitError("Unable to create new browser: code: 500"),
+    ).toBeNull();
+    expect(classifyBrowserRunLimitError("")).toBeNull();
   });
 
   it("gives scans enough default wall-clock and browser time to capture a free-plan site", () => {

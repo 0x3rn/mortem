@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import {
+  BROWSER_DAILY_LIMIT_REASON,
   PlatformBindingError,
   ScanIntakeError,
   listScanEvidenceArtifactsInD1,
@@ -14,7 +15,11 @@ import {
   type R2BucketLike,
 } from "@mortem/core";
 import { describe, expect, it, vi } from "vitest";
-import worker, { type QueueBatch, type ScanQueueMessage } from "./index";
+import worker, {
+  DEAD_LETTERED_CAPTURE_PAGE_REASON,
+  type QueueBatch,
+  type ScanQueueMessage,
+} from "./index";
 // Test-only helpers shared with @mortem/core tests (never shipped in the Worker).
 import {
   buildCaptureResult,
@@ -1055,81 +1060,94 @@ describe("@mortem/scan-worker handlers", () => {
     };
 
     const ackCapture = vi.fn();
-    await worker.queue(
-      {
-        queue: "mortem-scans",
-        messages: [
-          {
-            id: "msg_cap_1",
-            body: enqueuedMessages[0]!,
-            ack: ackCapture,
-            retry: vi.fn(),
-          },
-        ],
-      },
-      {
-        ENVIRONMENT: "test",
-        DB: d1,
-        EVIDENCE: r2Bucket,
-        SCAN_QUEUE: {
-          send: async (msg: ScanQueueMessage) => {
-            enqueuedMessages.push(msg);
+    // One page per run: the capture stage requeues itself until no page is pending.
+    let captureBody = enqueuedMessages[0]!;
+    const captureSendDelays: Array<number | undefined> = [];
+    for (let run = 0; run < 10 && captureBody.stage === "capturing"; run += 1) {
+      await worker.queue(
+        {
+          queue: "mortem-scans",
+          messages: [
+            {
+              id: "msg_cap_1",
+              body: captureBody,
+              ack: ackCapture,
+              retry: vi.fn(),
+            },
+          ],
+        },
+        {
+          ENVIRONMENT: "test",
+          DB: d1,
+          EVIDENCE: r2Bucket,
+          SCAN_QUEUE: {
+            send: async (
+              msg: ScanQueueMessage,
+              opts?: { delaySeconds?: number },
+            ) => {
+              enqueuedMessages.push(msg);
+              captureSendDelays.push(opts?.delaySeconds);
+            },
           },
         },
-      },
-      {
-        now: () => 1_760_000_025_000,
-        browserLauncher: async () => ({
-          async newContext() {
-            return {
-              async newPage() {
-                let currentUrl = "https://stripe.com/";
-                return {
-                  async addInitScript() {},
-                  async route() {},
-                  on() {},
-                  async goto(targetUrl: string) {
-                    currentUrl = targetUrl;
-                    const req = {
-                      url: () => currentUrl,
-                      method: () => "GET",
-                      resourceType: () => "document",
-                      isNavigationRequest: () => true,
-                      redirectedFrom: () => null,
-                    };
-                    return {
-                      url: () => currentUrl,
-                      status: () => 200,
-                      headers: () => ({ "content-type": "text/html" }),
-                      request: () => req,
-                    };
-                  },
-                  async waitForLoadState() {},
-                  async evaluate<R>() {
-                    return { ttfbMs: 30, fcpMs: 90 } as unknown as R;
-                  },
-                  async content() {
-                    return "<html><head><title>Stripe</title></head><body>Main</body></html>";
-                  },
-                  async title() {
-                    return "Stripe";
-                  },
-                  url: () => currentUrl,
-                  async screenshot() {
-                    return new Uint8Array([137, 80, 78, 71]);
-                  },
-                  async close() {},
-                };
-              },
-              async close() {},
-            };
-          },
-          async close() {},
-        }),
-      },
-    );
+        {
+          now: () => 1_760_000_025_000,
+          browserLauncher: async () => ({
+            async newContext() {
+              return {
+                async newPage() {
+                  let currentUrl = "https://stripe.com/";
+                  return {
+                    async addInitScript() {},
+                    async route() {},
+                    on() {},
+                    async goto(targetUrl: string) {
+                      currentUrl = targetUrl;
+                      const req = {
+                        url: () => currentUrl,
+                        method: () => "GET",
+                        resourceType: () => "document",
+                        isNavigationRequest: () => true,
+                        redirectedFrom: () => null,
+                      };
+                      return {
+                        url: () => currentUrl,
+                        status: () => 200,
+                        headers: () => ({ "content-type": "text/html" }),
+                        request: () => req,
+                      };
+                    },
+                    async waitForLoadState() {},
+                    async evaluate<R>() {
+                      return { ttfbMs: 30, fcpMs: 90 } as unknown as R;
+                    },
+                    async content() {
+                      return "<html><head><title>Stripe</title></head><body>Main</body></html>";
+                    },
+                    async title() {
+                      return "Stripe";
+                    },
+                    url: () => currentUrl,
+                    async screenshot() {
+                      return new Uint8Array([137, 80, 78, 71]);
+                    },
+                    async close() {},
+                  };
+                },
+                async close() {},
+              };
+            },
+            async close() {},
+          }),
+        },
+      );
+      captureBody = enqueuedMessages[enqueuedMessages.length - 1]!;
+    }
 
-    expect(ackCapture).toHaveBeenCalledOnce();
+    expect(ackCapture).toHaveBeenCalledTimes(4);
+    // Three requeues 20 s apart, then the hand-off to checking.
+    expect(captureSendDelays).toEqual([20, 20, 20, undefined]);
+    expect(captureBody.stage).toBe("checking");
     const capturedPages = await d1
       .prepare(
         `SELECT normalized_url, template_type, capture_status, status_code
@@ -1242,93 +1260,104 @@ describe("@mortem/scan-worker handlers", () => {
 
     let currentClockMs = 1_760_000_005_000;
 
-    await worker.queue(
-      {
-        queue: "mortem-scans",
-        messages: [
-          {
-            id: "msg_budget_1",
-            body: {
-              kind: "website_scan",
-              scanId,
-              workspaceId,
-              siteId,
-              targetUrl: "https://linear.app/",
-              stage: "capturing",
-              attempt: 1,
-              idempotencyKey: `${scanId}:capturing`,
+    // One page per run: follow the capture stage's requeues until it hands off.
+    let budgetCaptureBody: ScanQueueMessage = {
+      kind: "website_scan",
+      scanId,
+      workspaceId,
+      siteId,
+      targetUrl: "https://linear.app/",
+      stage: "capturing",
+      attempt: 1,
+      idempotencyKey: `${scanId}:capturing`,
+    };
+    for (
+      let run = 0;
+      run < 10 && budgetCaptureBody?.stage === "capturing";
+      run += 1
+    ) {
+      await worker.queue(
+        {
+          queue: "mortem-scans",
+          messages: [
+            {
+              id: "msg_budget_1",
+              body: budgetCaptureBody,
+              ack: ackBudget,
+              retry: retryBudget,
             },
-            ack: ackBudget,
-            retry: retryBudget,
-          },
-        ],
-      },
-      {
-        ENVIRONMENT: "test",
-        DB: d1,
-        EVIDENCE: r2Bucket,
-        SCAN_QUEUE: {
-          send: async (msg: ScanQueueMessage) => {
-            enqueuedMessages.push(msg);
+          ],
+        },
+        {
+          ENVIRONMENT: "test",
+          DB: d1,
+          EVIDENCE: r2Bucket,
+          SCAN_QUEUE: {
+            send: async (msg: ScanQueueMessage) => {
+              enqueuedMessages.push(msg);
+            },
           },
         },
-      },
-      {
-        now: () => {
-          currentClockMs += 500;
-          return currentClockMs;
-        },
-        browserLauncher: async () => ({
-          async newContext() {
-            return {
-              async newPage() {
-                let currentUrl = "https://linear.app/";
-                return {
-                  async addInitScript() {},
-                  async route() {},
-                  on() {},
-                  async goto(targetUrl: string) {
-                    currentUrl = targetUrl;
-                    const req = {
-                      url: () => currentUrl,
-                      method: () => "GET",
-                      resourceType: () => "document",
-                      isNavigationRequest: () => true,
-                      redirectedFrom: () => null,
-                    };
-                    return {
-                      url: () => currentUrl,
-                      status: () => 200,
-                      headers: () => ({ "content-type": "text/html" }),
-                      request: () => req,
-                    };
-                  },
-                  async waitForLoadState() {},
-                  async evaluate<R>() {
-                    return { ttfbMs: 25, fcpMs: 80 } as unknown as R;
-                  },
-                  async content() {
-                    return "<html><head><title>Linear</title></head><body>Content</body></html>";
-                  },
-                  async title() {
-                    return "Linear";
-                  },
-                  url: () => currentUrl,
-                  async screenshot() {
-                    return new Uint8Array([137, 80, 78, 71]);
-                  },
-                  async close() {},
-                };
-              },
-              async close() {},
-            };
+        {
+          now: () => {
+            currentClockMs += 500;
+            return currentClockMs;
           },
-          async close() {},
-        }),
-      },
-    );
+          browserLauncher: async () => ({
+            async newContext() {
+              return {
+                async newPage() {
+                  let currentUrl = "https://linear.app/";
+                  return {
+                    async addInitScript() {},
+                    async route() {},
+                    on() {},
+                    async goto(targetUrl: string) {
+                      currentUrl = targetUrl;
+                      const req = {
+                        url: () => currentUrl,
+                        method: () => "GET",
+                        resourceType: () => "document",
+                        isNavigationRequest: () => true,
+                        redirectedFrom: () => null,
+                      };
+                      return {
+                        url: () => currentUrl,
+                        status: () => 200,
+                        headers: () => ({ "content-type": "text/html" }),
+                        request: () => req,
+                      };
+                    },
+                    async waitForLoadState() {},
+                    async evaluate<R>() {
+                      return { ttfbMs: 25, fcpMs: 80 } as unknown as R;
+                    },
+                    async content() {
+                      return "<html><head><title>Linear</title></head><body>Content</body></html>";
+                    },
+                    async title() {
+                      return "Linear";
+                    },
+                    url: () => currentUrl,
+                    async screenshot() {
+                      return new Uint8Array([137, 80, 78, 71]);
+                    },
+                    async close() {},
+                  };
+                },
+                async close() {},
+              };
+            },
+            async close() {},
+          }),
+        },
+      );
+      budgetCaptureBody = enqueuedMessages.shift()!;
+    }
 
-    expect(ackBudget).toHaveBeenCalledOnce();
+    // Pages 1 and 2 are captured one run each; run 3 finds maxPages reached.
+    expect(ackBudget).toHaveBeenCalledTimes(3);
+    enqueuedMessages.unshift(budgetCaptureBody);
     expect(retryBudget).not.toHaveBeenCalled();
 
     // Capture records partial coverage and hands off to the checks; it no
@@ -2388,5 +2417,471 @@ describe("@mortem/scan-worker capture budgets: page cap across redeliveries", ()
       .first<{ capture_status: string; failure_reason: string }>();
     expect(pageRow?.capture_status).toBe("skipped");
     expect(pageRow?.failure_reason).toContain("maxPages");
+  });
+});
+
+describe("@mortem/scan-worker capture on the Workers Free plan", () => {
+  const T0 = 1_792_200_000_000;
+
+  /** A fake browser; `gotoError(url)` makes navigation to that URL throw. */
+  function fakeLauncher(gotoError?: (url: string) => Error | null) {
+    return vi.fn(async () => ({
+      async newContext() {
+        return {
+          async newPage() {
+            let currentUrl = "https://site.example.test/";
+            return {
+              async addInitScript() {},
+              async route() {},
+              on() {},
+              async goto(targetUrl: string) {
+                const err = gotoError?.(targetUrl);
+                if (err) throw err;
+                currentUrl = targetUrl;
+                const req = {
+                  url: () => currentUrl,
+                  method: () => "GET",
+                  resourceType: () => "document",
+                  isNavigationRequest: () => true,
+                  redirectedFrom: () => null,
+                };
+                return {
+                  url: () => currentUrl,
+                  status: () => 200,
+                  headers: () => ({ "content-type": "text/html" }),
+                  request: () => req,
+                };
+              },
+              async waitForLoadState() {},
+              async evaluate<R>() {
+                return { ttfbMs: 20, fcpMs: 60 } as unknown as R;
+              },
+              async content() {
+                return `<html lang="en"><head><title>Site page for tests</title></head><body><h1>Page</h1></body></html>`;
+              },
+              async title() {
+                return "Site page for tests";
+              },
+              url: () => currentUrl,
+              async screenshot() {
+                return new Uint8Array([137, 80, 78, 71]);
+              },
+              async close() {},
+            };
+          },
+          async close() {},
+        };
+      },
+      async close() {},
+    }));
+  }
+
+  async function seedCapturingScan(
+    scanId: string,
+    pages: ReadonlyArray<{ id: string; path: string; status: string }>,
+  ) {
+    const d1 = createSqliteD1();
+    const ids = await seedWorkspaceAndQueuedScan(
+      d1,
+      scanId,
+      "https://site.example.test/",
+    );
+    await d1
+      .prepare(
+        `UPDATE scans SET status = 'capturing', started_at = ? WHERE id = ?`,
+      )
+      .bind(T0, scanId)
+      .run();
+    for (const [i, p] of pages.entries()) {
+      const url = `https://site.example.test${p.path}`;
+      await d1
+        .prepare(
+          `INSERT INTO pages (id, scan_id, url, normalized_url, template_type, status_code, capture_status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'other', 200, ?, ?, ?)`,
+        )
+        .bind(p.id, scanId, url, url, p.status, T0 + i, T0 + i)
+        .run();
+    }
+    return { d1, ...ids };
+  }
+
+  /** Runs queue messages until none are left; returns each send's delay. */
+  async function drive(params: {
+    d1: D1DatabaseLike;
+    r2: R2BucketLike;
+    first: ScanQueueMessage;
+    launcher: ReturnType<typeof fakeLauncher>;
+    queueName?: string;
+  }) {
+    const queued: ScanQueueMessage[] = [params.first];
+    const sends: Array<{ stage?: string; delaySeconds?: number }> = [];
+    const sentKeys: Array<string | undefined> = [];
+    const acks: string[] = [];
+    let clock = T0 + 1_000;
+    for (let guard = 0; queued.length > 0 && guard < 20; guard += 1) {
+      const body = queued.shift()!;
+      await worker.queue(
+        {
+          queue:
+            guard === 0 && params.queueName ? params.queueName : "mortem-scans",
+          messages: [
+            {
+              id: `m_${guard}`,
+              body,
+              ack: () => acks.push(body.stage ?? ""),
+              retry: vi.fn(),
+            },
+          ],
+        },
+        {
+          ENVIRONMENT: "test",
+          DB: params.d1,
+          EVIDENCE: params.r2,
+          SCAN_QUEUE: {
+            send: async (
+              msg: ScanQueueMessage,
+              opts?: { delaySeconds?: number },
+            ) => {
+              queued.push(msg);
+              sentKeys.push(msg.idempotencyKey);
+              sends.push({
+                stage: msg.stage,
+                delaySeconds: opts?.delaySeconds,
+              });
+            },
+          },
+        },
+        {
+          now: () => (clock += 100),
+          browserLauncher: params.launcher as unknown as never,
+          psiFetch: vi.fn() as unknown as typeof fetch,
+        },
+      );
+    }
+    return { sends, sentKeys, acks };
+  }
+
+  function captureMessage(
+    scanId: string,
+    ids: { workspaceId: string; siteId: string },
+  ): ScanQueueMessage {
+    return {
+      kind: "website_scan",
+      scanId,
+      workspaceId: ids.workspaceId,
+      siteId: ids.siteId,
+      targetUrl: "https://site.example.test/",
+      stage: "capturing",
+      attempt: 1,
+      idempotencyKey: `${scanId}:capturing`,
+    };
+  }
+
+  async function scanRow(d1: D1DatabaseLike, scanId: string) {
+    return d1
+      .prepare(
+        `SELECT status, failure_class, failure_reason FROM scans WHERE id = ?`,
+      )
+      .bind(scanId)
+      .first<{
+        status: string;
+        failure_class: string | null;
+        failure_reason: string | null;
+      }>();
+  }
+
+  async function pageRows(d1: D1DatabaseLike, scanId: string) {
+    const res = await d1
+      .prepare(
+        `SELECT id, capture_status, failure_reason FROM pages WHERE scan_id = ? ORDER BY created_at`,
+      )
+      .bind(scanId).all!<{
+      id: string;
+      capture_status: string;
+      failure_reason: string | null;
+    }>();
+    return res.results ?? [];
+  }
+
+  it("captures one page per run, 20 s apart, then hands off to checking", async () => {
+    const { d1, scanId, ...ids } = await seedCapturingScan("scan_free_01", [
+      { id: "p1", path: "/", status: "pending" },
+      { id: "p2", path: "/a", status: "pending" },
+      { id: "p3", path: "/b", status: "pending" },
+    ]);
+    const launcher = fakeLauncher();
+    const { sends, sentKeys } = await drive({
+      d1,
+      r2: createInMemoryR2(),
+      first: captureMessage(scanId, ids),
+      launcher,
+    });
+    // Requeued runs keep the stage's own idempotency key.
+    expect(sentKeys.slice(0, 2)).toEqual([
+      `${scanId}:capturing`,
+      `${scanId}:capturing`,
+    ]);
+    // One browser launch per run, three runs.
+    expect(launcher).toHaveBeenCalledTimes(3);
+    expect(sends.slice(0, 3)).toEqual([
+      { stage: "capturing", delaySeconds: 20 },
+      { stage: "capturing", delaySeconds: 20 },
+      { stage: "checking", delaySeconds: undefined },
+    ]);
+    // Requeued runs write no capturing event; the final run writes exactly one.
+    const events = await d1
+      .prepare(
+        `SELECT COUNT(*) AS n FROM scan_events WHERE scan_id = ? AND stage = 'capturing'`,
+      )
+      .bind(scanId)
+      .first<{ n: number }>();
+    expect(events?.n).toBe(1);
+    expect((await scanRow(d1, scanId))?.status).toBe("complete");
+  });
+
+  it("marks a page that fails to load as failed, keeps the others and ends partial", async () => {
+    const { d1, scanId, ...ids } = await seedCapturingScan("scan_free_02", [
+      { id: "p1", path: "/", status: "pending" },
+      { id: "p2", path: "/slow", status: "pending" },
+      { id: "p3", path: "/c", status: "pending" },
+    ]);
+    const launcher = fakeLauncher((url) =>
+      url.endsWith("/slow")
+        ? new Error("page.goto: Timeout 25000ms exceeded.")
+        : null,
+    );
+    await drive({
+      d1,
+      r2: createInMemoryR2(),
+      first: captureMessage(scanId, ids),
+      launcher,
+    });
+    const pages = await pageRows(d1, scanId);
+    expect(pages.map((p) => `${p.id}:${p.capture_status}`)).toEqual([
+      "p1:captured",
+      "p2:failed",
+      "p3:captured",
+    ]);
+    expect(pages[1]!.failure_reason).toMatch(
+      /^navigation_timeout: page\.goto: Timeout 25000ms exceeded\./,
+    );
+    const scan = await scanRow(d1, scanId);
+    expect(scan?.status).toBe("partial");
+    expect(scan?.failure_class).toBe("navigation_timeout");
+    expect(scan?.failure_reason).toContain(
+      "1 of 3 page(s) could not be captured",
+    );
+  });
+
+  it("fails the scan with the page reason when no page could be captured", async () => {
+    const { d1, scanId, ...ids } = await seedCapturingScan("scan_free_03", [
+      { id: "p1", path: "/", status: "pending" },
+    ]);
+    await drive({
+      d1,
+      r2: createInMemoryR2(),
+      first: captureMessage(scanId, ids),
+      launcher: fakeLauncher(
+        () => new Error("page.goto: Timeout 25000ms exceeded."),
+      ),
+    });
+    const scan = await scanRow(d1, scanId);
+    expect(scan?.status).toBe("failed");
+    expect(scan?.failure_class).toBe("navigation_timeout");
+    expect(scan?.failure_reason).toContain(
+      "1 of 1 page(s) could not be captured",
+    );
+  });
+
+  it("keeps the page pending and retries after 30 s when Browser Run refuses a new browser", async () => {
+    const { d1, scanId, ...ids } = await seedCapturingScan("scan_free_04", [
+      { id: "p1", path: "/", status: "pending" },
+    ]);
+    const launcher = vi.fn(async () => {
+      throw new Error(
+        "Unable to create new browser: code: 429: message: Rate limit exceeded",
+      );
+    });
+    const sends: Array<{ stage?: string; delaySeconds?: number }> = [];
+    const ack = vi.fn();
+    const retry = vi.fn();
+    await worker.queue(
+      {
+        queue: "mortem-scans",
+        messages: [
+          { id: "m_429", body: captureMessage(scanId, ids), ack, retry },
+        ],
+      },
+      {
+        ENVIRONMENT: "test",
+        DB: d1,
+        EVIDENCE: createInMemoryR2(),
+        SCAN_QUEUE: {
+          send: async (
+            msg: ScanQueueMessage,
+            opts?: { delaySeconds?: number },
+          ) => {
+            sends.push({ stage: msg.stage, delaySeconds: opts?.delaySeconds });
+          },
+        },
+      },
+      { now: () => T0 + 1_000, browserLauncher: launcher as unknown as never },
+    );
+    expect(ack).toHaveBeenCalledOnce();
+    expect(retry).not.toHaveBeenCalled();
+    expect(sends).toEqual([{ stage: "capturing", delaySeconds: 30 }]);
+    expect((await pageRows(d1, scanId))[0]!.capture_status).toBe("pending");
+    expect((await scanRow(d1, scanId))?.status).toBe("capturing");
+  });
+
+  it("stops at the daily browser limit, keeps captured pages and ends partial", async () => {
+    const { d1, scanId, ...ids } = await seedCapturingScan("scan_free_05", [
+      { id: "p1", path: "/", status: "pending" },
+      { id: "p2", path: "/a", status: "pending" },
+      { id: "p3", path: "/b", status: "pending" },
+    ]);
+    let launches = 0;
+    const real = fakeLauncher();
+    const launcher = vi.fn(async (binding: unknown) => {
+      launches += 1;
+      if (launches > 1) {
+        throw new Error(
+          "Unable to create new browser: code: 429: message: Browser time limit exceeded for today",
+        );
+      }
+      return (real as unknown as (b: unknown) => Promise<unknown>)(binding);
+    });
+    await drive({
+      d1,
+      r2: createInMemoryR2(),
+      first: captureMessage(scanId, ids),
+      launcher: launcher as unknown as ReturnType<typeof fakeLauncher>,
+    });
+    const pages = await pageRows(d1, scanId);
+    expect(pages.map((p) => `${p.id}:${p.capture_status}`)).toEqual([
+      "p1:captured",
+      "p2:skipped",
+      "p3:skipped",
+    ]);
+    expect(pages[1]!.failure_reason).toBe(BROWSER_DAILY_LIMIT_REASON);
+    const scan = await scanRow(d1, scanId);
+    expect(scan?.status).toBe("partial");
+    expect(scan?.failure_class).toBe("budget_exceeded");
+    expect(scan?.failure_reason).toBe(BROWSER_DAILY_LIMIT_REASON);
+  });
+
+  it("does not re-capture the site when a repeated capture run finds no pending pages", async () => {
+    const { d1, scanId, ...ids } = await seedCapturingScan("scan_free_06", [
+      { id: "p1", path: "/", status: "captured" },
+      { id: "p2", path: "/a", status: "skipped" },
+    ]);
+    const launcher = fakeLauncher();
+    const sends: Array<string | undefined> = [];
+    await worker.queue(
+      {
+        queue: "mortem-scans",
+        messages: [
+          {
+            id: "m_dup",
+            body: captureMessage(scanId, ids),
+            ack: vi.fn(),
+            retry: vi.fn(),
+          },
+        ],
+      },
+      {
+        ENVIRONMENT: "test",
+        DB: d1,
+        EVIDENCE: createInMemoryR2(),
+        SCAN_QUEUE: {
+          send: async (msg: ScanQueueMessage) => {
+            sends.push(msg.stage);
+          },
+        },
+      },
+      { now: () => T0 + 1_000, browserLauncher: launcher as unknown as never },
+    );
+    expect(launcher).not.toHaveBeenCalled();
+    expect(sends).toEqual(["checking"]);
+  });
+
+  it("continues to the checks with the captured pages when the capture stage is dead-lettered", async () => {
+    const { d1, scanId, ...ids } = await seedCapturingScan("scan_free_07", [
+      { id: "p1", path: "/", status: "captured" },
+      { id: "p2", path: "/heavy", status: "pending" },
+    ]);
+    const sends: Array<string | undefined> = [];
+    const ack = vi.fn();
+    await worker.queue(
+      {
+        queue: "mortem-scans-dlq",
+        messages: [
+          {
+            id: "m_dlq",
+            body: captureMessage(scanId, ids),
+            ack,
+            retry: vi.fn(),
+          },
+        ],
+      },
+      {
+        ENVIRONMENT: "test",
+        DB: d1,
+        SCAN_QUEUE: {
+          send: async (msg: ScanQueueMessage) => {
+            sends.push(msg.stage);
+          },
+        },
+      },
+      { now: () => T0 + 1_000 },
+    );
+    expect(ack).toHaveBeenCalledOnce();
+    expect(sends).toEqual(["checking"]);
+    const pages = await pageRows(d1, scanId);
+    expect(pages[1]!.capture_status).toBe("failed");
+    expect(pages[1]!.failure_reason).toBe(DEAD_LETTERED_CAPTURE_PAGE_REASON);
+    const event = await d1
+      .prepare(
+        `SELECT metadata_json FROM scan_events WHERE scan_id = ? AND stage = 'capturing'`,
+      )
+      .bind(scanId)
+      .first<{ metadata_json: string }>();
+    expect(JSON.parse(event!.metadata_json).partialCoverage).toMatchObject({
+      failureClass: "internal_error",
+      reason: expect.stringContaining("1 of 2 page(s) could not be captured"),
+    });
+    expect((await scanRow(d1, scanId))?.status).toBe("capturing");
+  });
+
+  it("still fails a dead-lettered capture stage that captured nothing", async () => {
+    const { d1, scanId, ...ids } = await seedCapturingScan("scan_free_08", [
+      { id: "p1", path: "/", status: "pending" },
+    ]);
+    const sends: Array<string | undefined> = [];
+    await worker.queue(
+      {
+        queue: "mortem-scans-dlq",
+        messages: [
+          {
+            id: "m_dlq0",
+            body: captureMessage(scanId, ids),
+            ack: vi.fn(),
+            retry: vi.fn(),
+          },
+        ],
+      },
+      {
+        ENVIRONMENT: "test",
+        DB: d1,
+        SCAN_QUEUE: {
+          send: async (msg: ScanQueueMessage) => {
+            sends.push(msg.stage);
+          },
+        },
+      },
+      { now: () => T0 + 1_000 },
+    );
+    expect(sends).toEqual([]);
+    expect((await scanRow(d1, scanId))?.status).toBe("failed");
   });
 });

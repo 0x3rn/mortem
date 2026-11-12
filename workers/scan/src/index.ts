@@ -1,12 +1,15 @@
 import {
+  BROWSER_DAILY_LIMIT_REASON,
   CrawlBudgetEnforcer,
   DIAGNOSTIC_CATEGORIES,
   PlatformBindingError,
   READ_ONLY_SCAN_POLICY,
+  SCAN_FAILURE_CLASSES,
   SCAN_STAGES,
   advanceScanStageInD1,
   buildSmokeArtifactKey,
   capturePageAcrossViewports,
+  classifyBrowserRunLimitError,
   classifyScanErrorForRetry,
   computeRetryBackoffSeconds,
   createBrowserSessionPool,
@@ -92,9 +95,104 @@ export interface QueueExecutionOptions {
   psiSleep?: (ms: number) => Promise<void>;
   /** axe-core source for capture; defaults to the bundled build, `null` disables it (tests). */
   axeSource?: string | null;
+  /** Pages captured per queue invocation (default `CAPTURE_PAGES_PER_RUN`). */
+  capturePagesPerRun?: number;
+  /** Delay before the next capture run (default `CAPTURE_REQUEUE_DELAY_SECONDS`). */
+  captureRequeueDelaySeconds?: number;
+  /** Delay after Browser Run refuses a new browser (default `BROWSER_RATE_LIMIT_DELAY_SECONDS`). */
+  browserRateLimitDelaySeconds?: number;
   stageHandlers?: ScanStageHandlerMap;
   now?: () => number;
 }
+
+/**
+ * Capture one page per Worker invocation. On the Workers Free plan a queue
+ * consumer that captures several pages exceeds the CPU limit (seen on staging:
+ * `exceededCpu` at 64 ms), and Browser Run allows one new browser every 20 s.
+ */
+export const CAPTURE_PAGES_PER_RUN = 1;
+/** Matches Browser Run's Free-plan rate of one new browser every 20 seconds. */
+export const CAPTURE_REQUEUE_DELAY_SECONDS = 20;
+/** Wait after a Browser Run 429 before trying the same page again. */
+export const BROWSER_RATE_LIMIT_DELAY_SECONDS = 30;
+
+/**
+ * A capture stage that reaches the dead-letter queue (for example its run kept
+ * exceeding the Worker CPU limit on one page) must not throw away the pages it
+ * already captured. The pages still pending are marked failed and the scan
+ * continues to the checks, ending `partial`. Returns false when nothing was
+ * captured, so the caller fails the scan as before.
+ */
+async function continueAfterDeadLetteredCapture(params: {
+  d1: NonNullable<ScanWorkerEnv["DB"]>;
+  scanQueue: ScanWorkerEnv["SCAN_QUEUE"];
+  message: ScanQueueMessage;
+  now?: () => number;
+}): Promise<boolean> {
+  const { d1, message } = params;
+  if (message.stage !== "capturing") {
+    return false;
+  }
+  const scan = await d1
+    .prepare(`SELECT status FROM scans WHERE id = ? LIMIT 1`)
+    .bind(message.scanId)
+    .first<{ status: string }>();
+  if (scan?.status !== "capturing") {
+    return false;
+  }
+  const countPages = async (statuses: string) =>
+    (
+      await d1
+        .prepare(
+          `SELECT COUNT(*) AS n FROM pages WHERE scan_id = ? AND capture_status IN (${statuses})`,
+        )
+        .bind(message.scanId)
+        .first<{ n: number }>()
+    )?.n ?? 0;
+  const captured = await countPages("'captured', 'partial'");
+  if (captured === 0) {
+    return false;
+  }
+
+  const nowMs = params.now ? params.now() : Date.now();
+  await d1
+    .prepare(
+      `UPDATE pages
+       SET capture_status = 'failed', failure_reason = ?, updated_at = ?
+       WHERE scan_id = ? AND capture_status = 'pending'`,
+    )
+    .bind(DEAD_LETTERED_CAPTURE_PAGE_REASON, nowMs, message.scanId)
+    .run();
+  const total = await countPages(
+    "'pending', 'captured', 'partial', 'failed', 'skipped'",
+  );
+  const failed = await countPages("'failed'");
+  const reason = `${failed} of ${total} page(s) could not be captured: the capture run failed repeatedly and was stopped (for example it exceeded the Worker CPU limit).`;
+
+  await advanceScanStageInD1({
+    d1,
+    scanQueue: params.scanQueue as unknown as Parameters<
+      typeof advanceScanStageInD1
+    >[0]["scanQueue"],
+    message,
+    stageHandlers: {
+      capturing: () => ({
+        outcome: "continue",
+        partialCoverage: { failureClass: "internal_error", reason },
+        pagesDiscovered: total,
+        pagesCaptured: captured,
+        message: `Partial capture (${captured}/${total} page(s)): ${reason}`,
+        metadata: { recoveredFromDeadLetter: true },
+      }),
+    },
+    now: params.now,
+  });
+  return true;
+}
+
+/** Stored on pages still pending when a capture stage is dead-lettered. */
+export const DEAD_LETTERED_CAPTURE_PAGE_REASON =
+  "internal_error: the capture run failed repeatedly and was stopped before this page was captured (for example it exceeded the Worker CPU limit).";
 
 export interface QueueBatchSummary {
   queue: string;
@@ -348,6 +446,17 @@ const worker = {
 
         if (env.DB) {
           try {
+            const salvaged = await continueAfterDeadLetteredCapture({
+              d1: env.DB,
+              scanQueue: env.SCAN_QUEUE,
+              message: { ...message.body, attempt },
+              now: options.now,
+            });
+            if (salvaged) {
+              acceptedScanIds.push(scanId);
+              message.ack();
+              continue;
+            }
             await handleDeadLetterScanMessageInD1({
               d1: env.DB,
               message: {
@@ -583,19 +692,36 @@ const worker = {
                         template_type: PageTemplateType;
                       }>()
                     : { success: true, results: [] };
+                  // Scans with discovered pages capture only their pending pages
+                  // (a continuation run may find none left). The single-target
+                  // fallback is for scans that never recorded any page.
+                  const pagesRecordedBefore = await countPages(
+                    "'pending', 'captured', 'partial', 'failed', 'skipped'",
+                  );
                   const pendingPages =
-                    !ctx.pageId && (pendingRes.results?.length ?? 0) > 0
-                      ? pendingRes.results!
-                      : [
+                    ctx.pageId ||
+                    ((pendingRes.results?.length ?? 0) === 0 &&
+                      pagesRecordedBefore === 0)
+                      ? [
                           {
                             id: ctx.pageId ?? "",
                             url: ctx.targetUrl,
                             normalized_url: ctx.targetUrl,
                             template_type: "home" as PageTemplateType,
                           },
-                        ];
+                        ]
+                      : (pendingRes.results ?? []);
 
                   let capturedCount = 0;
+                  let processedThisRun = 0;
+                  let browserRateLimited = false;
+                  const pageFailureClasses: ScanFailureClass[] = [];
+                  const pagesPerRun = Math.max(
+                    1,
+                    Math.floor(
+                      options.capturePagesPerRun ?? CAPTURE_PAGES_PER_RUN,
+                    ),
+                  );
                   let lastCapturePageId = "";
                   let lastFinalUrl = ctx.targetUrl;
                   let lastCaptureStatus: string = "captured";
@@ -608,6 +734,11 @@ const worker = {
                   try {
                     for (let idx = 0; idx < pendingPages.length; idx += 1) {
                       const targetPage = pendingPages[idx]!;
+                      // One page per run by default: keeps each Worker invocation
+                      // inside the plan's CPU limit and spaces browser launches.
+                      if (processedThisRun >= pagesPerRun) {
+                        break;
+                      }
                       const currentNowMs = options.now
                         ? options.now()
                         : Date.now();
@@ -643,109 +774,191 @@ const worker = {
                         break;
                       }
 
-                      const capture = await capturePageAcrossViewports({
-                        targetUrl: targetPage.url,
-                        browserBinding: env.BROWSER,
-                        browserLauncher: trackedLauncher,
-                        navigationTimeoutMs: budgets.perPageTimeoutMs,
-                        maxBytesPerPage: budgets.maxBytesPerPage,
-                        now: options.now,
-                        axeSource:
-                          options.axeSource === undefined
-                            ? AXE_SOURCE
-                            : options.axeSource,
-                      });
-                      const { pageId } = await recordCapturedPageInD1({
-                        d1: ctx.d1,
-                        scanId: ctx.scanId,
-                        pageId: targetPage.id || undefined,
-                        templateType: targetPage.template_type,
-                        capture,
-                        nowMs: ctx.nowMs,
-                      });
+                      processedThisRun += 1;
+                      try {
+                        const capture = await capturePageAcrossViewports({
+                          targetUrl: targetPage.url,
+                          browserBinding: env.BROWSER,
+                          browserLauncher: trackedLauncher,
+                          navigationTimeoutMs: budgets.perPageTimeoutMs,
+                          maxBytesPerPage: budgets.maxBytesPerPage,
+                          now: options.now,
+                          axeSource:
+                            options.axeSource === undefined
+                              ? AXE_SOURCE
+                              : options.axeSource,
+                        });
+                        const { pageId } = await recordCapturedPageInD1({
+                          d1: ctx.d1,
+                          scanId: ctx.scanId,
+                          pageId: targetPage.id || undefined,
+                          templateType: targetPage.template_type,
+                          capture,
+                          nowMs: ctx.nowMs,
+                        });
 
-                      lastCapturePageId = pageId;
-                      lastFinalUrl = capture.finalUrl;
-                      lastCaptureStatus = capture.captureStatus;
-                      lastStatusCode = capture.statusCode;
-                      if (
-                        capture.desktop.networkIdleTimedOut ||
-                        capture.mobile.networkIdleTimedOut
-                      ) {
-                        anyNetworkIdleTimedOut = true;
-                      }
-                      if (capture.htmlTruncated && capture.failureReason) {
-                        budgetExceededReason = capture.failureReason;
-                      }
+                        lastCapturePageId = pageId;
+                        lastFinalUrl = capture.finalUrl;
+                        lastCaptureStatus = capture.captureStatus;
+                        lastStatusCode = capture.statusCode;
+                        if (
+                          capture.desktop.networkIdleTimedOut ||
+                          capture.mobile.networkIdleTimedOut
+                        ) {
+                          anyNetworkIdleTimedOut = true;
+                        }
+                        if (capture.htmlTruncated && capture.failureReason) {
+                          budgetExceededReason = capture.failureReason;
+                        }
 
-                      // Record browser time per page, so an interrupted run keeps it.
-                      await updateScanUsageInD1({
-                        d1: ctx.d1,
-                        scanId: ctx.scanId,
-                        increment: { browserMs: capture.browserMs ?? 2 },
-                        nowMs: ctx.nowMs,
-                      });
+                        // Record browser time per page, so an interrupted run keeps it.
+                        await updateScanUsageInD1({
+                          d1: ctx.d1,
+                          scanId: ctx.scanId,
+                          increment: { browserMs: capture.browserMs ?? 2 },
+                          nowMs: ctx.nowMs,
+                        });
 
-                      if (capture.captureStatus === "blocked") {
+                        if (capture.captureStatus === "blocked") {
+                          budgetEnforcer.recordPageCapture({
+                            browserMs: capture.browserMs ?? 2,
+                            captured: false,
+                          });
+                          if (idx === 0 && pendingPages.length === 1) {
+                            await updateScanUsageInD1({
+                              d1: ctx.d1,
+                              scanId: ctx.scanId,
+                              set: {
+                                pagesDiscovered: pendingPages.length,
+                                pagesCaptured: 0,
+                              },
+                              nowMs: ctx.nowMs,
+                            });
+                            return {
+                              outcome: "failed",
+                              failureClass:
+                                capture.failureClass ?? "upstream_blocked",
+                              failureReason:
+                                capture.failureReason ??
+                                `Target returned a WAF or bot challenge screen for ${targetPage.url}`,
+                              pagesCaptured: 0,
+                              metadata: {
+                                pageId,
+                                captureStatus: capture.captureStatus,
+                                botProvider:
+                                  capture.desktop.botChallenge.provider ??
+                                  capture.mobile.botChallenge.provider,
+                              },
+                            };
+                          }
+                          continue;
+                        }
+
+                        let pageR2Bytes = 0;
+                        if (env.EVIDENCE) {
+                          const persistedEvidence =
+                            await persistPageCaptureEvidenceToR2AndD1({
+                              d1: ctx.d1,
+                              r2: env.EVIDENCE,
+                              scanId: ctx.scanId,
+                              pageId,
+                              capture,
+                              nowMs: ctx.nowMs,
+                            });
+                          totalEvidenceArtifacts +=
+                            persistedEvidence.artifacts.length;
+                          totalR2BytesWritten +=
+                            persistedEvidence.totalBytesWritten;
+                          pageR2Bytes = persistedEvidence.totalBytesWritten;
+                        }
+
                         budgetEnforcer.recordPageCapture({
                           browserMs: capture.browserMs ?? 2,
-                          captured: false,
+                          r2BytesWritten: pageR2Bytes,
+                          captured: true,
                         });
-                        if (idx === 0 && pendingPages.length === 1) {
-                          await updateScanUsageInD1({
-                            d1: ctx.d1,
-                            scanId: ctx.scanId,
-                            set: {
-                              pagesDiscovered: pendingPages.length,
-                              pagesCaptured: 0,
-                            },
-                            nowMs: ctx.nowMs,
-                          });
-                          return {
-                            outcome: "failed",
-                            failureClass:
-                              capture.failureClass ?? "upstream_blocked",
-                            failureReason:
-                              capture.failureReason ??
-                              `Target returned a WAF or bot challenge screen for ${targetPage.url}`,
-                            pagesCaptured: 0,
-                            metadata: {
-                              pageId,
-                              captureStatus: capture.captureStatus,
-                              botProvider:
-                                capture.desktop.botChallenge.provider ??
-                                capture.mobile.botChallenge.provider,
-                            },
-                          };
+
+                        capturedCount += 1;
+                      } catch (pageErr) {
+                        const pageErrMessage =
+                          pageErr instanceof Error
+                            ? pageErr.message
+                            : String(pageErr);
+                        const browserLimit =
+                          classifyBrowserRunLimitError(pageErrMessage);
+                        const failNowMs = options.now
+                          ? options.now()
+                          : Date.now();
+
+                        if (browserLimit === "daily_limit") {
+                          // No more browser time today: keep what was captured.
+                          budgetExceededReason = BROWSER_DAILY_LIMIT_REASON;
+                          for (
+                            let remIdx = idx;
+                            remIdx < pendingPages.length;
+                            remIdx += 1
+                          ) {
+                            const remPage = pendingPages[remIdx]!;
+                            if (remPage.id) {
+                              await ctx.d1
+                                .prepare(
+                                  `UPDATE pages
+                                   SET capture_status = 'skipped',
+                                       failure_reason = ?,
+                                       updated_at = ?
+                                   WHERE id = ?`,
+                                )
+                                .bind(
+                                  BROWSER_DAILY_LIMIT_REASON,
+                                  failNowMs,
+                                  remPage.id,
+                                )
+                                .run();
+                            }
+                          }
+                          break;
                         }
-                        continue;
+
+                        if (browserLimit === "rate_limited") {
+                          // Too many new browsers: the page stays pending and
+                          // the stage runs again after a longer pause.
+                          browserRateLimited = true;
+                          break;
+                        }
+
+                        const pageClassification =
+                          classifyScanErrorForRetry(pageErr);
+                        if (
+                          !targetPage.id ||
+                          pageClassification.failureClass === "internal_error"
+                        ) {
+                          // Not a page problem (or no page row to record it on):
+                          // let the queue retry the stage.
+                          throw pageErr;
+                        }
+
+                        // One page failing must not discard the others.
+                        await ctx.d1
+                          .prepare(
+                            `UPDATE pages
+                             SET capture_status = 'failed',
+                                 failure_reason = ?,
+                                 updated_at = ?
+                             WHERE id = ?`,
+                          )
+                          .bind(
+                            `${pageClassification.failureClass}: ${pageErrMessage}`.slice(
+                              0,
+                              500,
+                            ),
+                            failNowMs,
+                            targetPage.id,
+                          )
+                          .run();
+                        pageFailureClasses.push(
+                          pageClassification.failureClass,
+                        );
                       }
-
-                      let pageR2Bytes = 0;
-                      if (env.EVIDENCE) {
-                        const persistedEvidence =
-                          await persistPageCaptureEvidenceToR2AndD1({
-                            d1: ctx.d1,
-                            r2: env.EVIDENCE,
-                            scanId: ctx.scanId,
-                            pageId,
-                            capture,
-                            nowMs: ctx.nowMs,
-                          });
-                        totalEvidenceArtifacts +=
-                          persistedEvidence.artifacts.length;
-                        totalR2BytesWritten +=
-                          persistedEvidence.totalBytesWritten;
-                        pageR2Bytes = persistedEvidence.totalBytesWritten;
-                      }
-
-                      budgetEnforcer.recordPageCapture({
-                        browserMs: capture.browserMs ?? 2,
-                        r2BytesWritten: pageR2Bytes,
-                        captured: true,
-                      });
-
-                      capturedCount += 1;
                     }
                   } finally {
                     await sessionPool.closeIdleBrowsers();
@@ -775,14 +988,58 @@ const worker = {
                     nowMs: ctx.nowMs,
                   });
 
+                  const pendingLeft = await countPages("'pending'");
+                  if (
+                    browserRateLimited ||
+                    (!budgetExceededReason && pendingLeft > 0)
+                  ) {
+                    // More pages to capture: run this stage again later.
+                    return {
+                      outcome: "requeue",
+                      requeueDelaySeconds: browserRateLimited
+                        ? (options.browserRateLimitDelaySeconds ??
+                          BROWSER_RATE_LIMIT_DELAY_SECONDS)
+                        : (options.captureRequeueDelaySeconds ??
+                          CAPTURE_REQUEUE_DELAY_SECONDS),
+                      pagesDiscovered,
+                      pagesCaptured: capturedTotal,
+                    };
+                  }
+
+                  // Pages that failed in this or an earlier run.
+                  const failedTotal = await countPages("'failed'");
+                  const firstFailure = await ctx.d1
+                    .prepare(
+                      `SELECT failure_reason FROM pages
+                       WHERE scan_id = ? AND capture_status = 'failed'
+                       ORDER BY updated_at ASC LIMIT 1`,
+                    )
+                    .bind(ctx.scanId)
+                    .first<{ failure_reason: string | null }>();
+                  const recordedClass = (
+                    firstFailure?.failure_reason ?? ""
+                  ).split(":")[0] as ScanFailureClass;
+                  const pageFailureClass: ScanFailureClass =
+                    pageFailureClasses[0] ??
+                    (SCAN_FAILURE_CLASSES.includes(recordedClass)
+                      ? recordedClass
+                      : "navigation_timeout");
+                  const pageFailureReason =
+                    failedTotal > 0
+                      ? `${failedTotal} of ${pagesDiscovered} page(s) could not be captured (first: ${firstFailure?.failure_reason ?? "unknown error"}).`
+                      : null;
+
                   if (capturedTotal === 0) {
                     return {
                       outcome: "failed",
                       failureClass: budgetExceededReason
                         ? "budget_exceeded"
-                        : "upstream_blocked",
+                        : pageFailureReason
+                          ? pageFailureClass
+                          : "upstream_blocked",
                       failureReason:
                         budgetExceededReason ??
+                        pageFailureReason ??
                         `Target returned a WAF or bot challenge screen for ${ctx.targetUrl}`,
                       pagesCaptured: 0,
                       metadata: {
@@ -822,18 +1079,28 @@ const worker = {
 
                   return {
                     outcome: "continue",
-                    pagesDiscovered: pendingPages.length,
-                    pagesCaptured: capturedCount,
+                    ...(pageFailureReason
+                      ? {
+                          partialCoverage: {
+                            failureClass: pageFailureClass,
+                            reason: pageFailureReason,
+                          },
+                        }
+                      : {}),
+                    pagesDiscovered,
+                    pagesCaptured: capturedTotal,
                     message:
-                      pendingPages.length > 1
-                        ? `Captured desktop (1440x900) and mobile (390x844) evidence across ${capturedCount}/${pendingPages.length} discovered page(s)`
+                      pagesDiscovered > 1
+                        ? `Captured desktop (1440x900) and mobile (390x844) evidence across ${capturedTotal}/${pagesDiscovered} discovered page(s)`
                         : lastCaptureStatus === "partial"
                           ? `Captured desktop and mobile viewports at network-idle timeout mark (partial) for ${lastFinalUrl}`
                           : `Captured desktop (1440x900) and mobile (390x844) evidence for ${lastFinalUrl}`,
                     metadata: {
                       pageId: lastCapturePageId,
                       pagesAttempted: pendingPages.length,
-                      pagesCaptured: capturedCount,
+                      pagesCaptured: capturedTotal,
+                      capturedThisAttempt: capturedCount,
+                      pagesFailed: failedTotal,
                       captureStatus: lastCaptureStatus,
                       statusCode: lastStatusCode,
                       networkIdleTimedOut: anyNetworkIdleTimedOut,

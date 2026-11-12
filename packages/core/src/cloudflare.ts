@@ -85,7 +85,7 @@ export interface R2BucketLike {
 }
 
 export interface QueueLike<T = unknown> {
-  send(message: T): Promise<void>;
+  send(message: T, options?: { delaySeconds?: number }): Promise<void>;
 }
 
 export interface BrowserBindingLike {

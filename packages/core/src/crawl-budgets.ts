@@ -164,6 +164,35 @@ export interface HtmlPayloadBudgetResult {
   reason: string | null;
 }
 
+/** Reason stored when Browser Run's daily browser-time allowance is used up. */
+export const BROWSER_DAILY_LIMIT_REASON =
+  "Cloudflare Browser Run daily browser-time limit reached; the remaining pages were not captured.";
+
+export type BrowserRunLimitKind = "daily_limit" | "rate_limited";
+
+/**
+ * Recognises Browser Run refusing to start a browser. Free plan: 10 minutes of
+ * browser time per day and one new browser every 20 seconds, both reported as
+ * `Unable to create new browser: code: 429`.
+ */
+export function classifyBrowserRunLimitError(
+  message: string,
+): BrowserRunLimitKind | null {
+  const lower = message.toLowerCase();
+  if (lower.includes("browser time limit exceeded")) {
+    return "daily_limit";
+  }
+  if (
+    lower.includes("unable to create new browser") &&
+    (lower.includes("429") ||
+      lower.includes("rate limit") ||
+      lower.includes("too many"))
+  ) {
+    return "rate_limited";
+  }
+  return null;
+}
+
 export class CrawlBudgetEnforcer {
   readonly budgets: ResolvedScanBudgets;
   readonly startedAtMs: number;
