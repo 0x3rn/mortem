@@ -32,7 +32,7 @@ Lighthouse cannot run inside Cloudflare Workers, but Mortem must report lab perf
 
 ## Consequences
 
-- A scan with PSI enabled makes up to 6 PSI calls (3 pages × 2 strategies), bounded by the 10-minute stage budget. That time is I/O wait inside a queue consumer, not CPU. `maxWallTimeMs` (300 s since ADR 0015) applies to crawling only.
+- A scan with PSI enabled makes up to 6 PSI calls (3 pages × 2 strategies), bounded by the 10-minute stage budget. That time is I/O wait inside a queue consumer, not CPU. `maxWallTimeMs` (600 s since ADR 0017) applies to crawling only.
 - If a future Lighthouse drops or renames a mapped audit, it is recorded as `missing` in `audits_json` and no finding fires — never a false "pass". Re-record fixtures and update the mapping; a test keeps the code and `docs/rule-catalog/performance.md` in sync.
 - Migration `0004` must be applied before this `mortem-scan` build is deployed (done on remote `mortem-db` on 2026-11-10).
 

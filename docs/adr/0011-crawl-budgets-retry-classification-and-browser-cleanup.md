@@ -12,7 +12,7 @@ Cloudflare Workers and Cloudflare Browser Rendering enforce strict CPU, memory, 
 
 1. **Hard Per-Scan Crawl Budgets (`CrawlBudgetEnforcer`):**
    - `resolveScanBudgets` merges workspace plan defaults (`single` = 1 page, `pro`/`agency` = 5 pages) with per-scan `scans.budgets_json` and `scans.options_json` overrides:
-     - `maxWallTimeMs` (default `300,000ms`; was `90,000ms`, raised in [ADR 0015](0015-scan-budgets-across-redeliveries-and-partial-coverage.md))
+     - `maxWallTimeMs` (default `600,000ms`; was `90,000ms`, raised to 300,000 in [ADR 0015](0015-scan-budgets-across-redeliveries-and-partial-coverage.md) and to 600,000 in [ADR 0017](0017-scanning-within-the-workers-free-plan.md))
      - `maxBrowserMs` (default `240,000ms`; was `60,000ms`, raised in ADR 0015)
      - `maxPages` (plan-bounded)
      - `maxBytesPerPage` (default `10,485,760` bytes / `10 MB`)

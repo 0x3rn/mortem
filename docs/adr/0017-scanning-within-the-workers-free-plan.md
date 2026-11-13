@@ -42,6 +42,10 @@ The owner chose to keep the Cloudflare account on **Workers Free**. The first re
 - CPU enforcement on Free is not strictly applied per run. On staging, one-page runs used 184–688 ms of CPU and completed, while an earlier multi-page run was stopped at 64 ms. The dead-letter path above is the safety net.
 - Moving to Workers Paid only needs `CAPTURE_PAGES_PER_RUN` and the delays raised; nothing else depends on the plan.
 
+## Update (THE-184)
+
+One page per run with 20 s gaps takes about 50 s per page. A 6-page staging scan reached the 300 s wall-clock budget at 312 s and skipped its last page. `DEFAULT_SCAN_BUDGETS.maxWallTimeMs` is now 600 s. Browser time (`maxBrowserMs`) and the plan page caps still bound cost; the wall-clock budget only stops a scan that is waiting too long.
+
 ## Verification
 
 - `workers/scan/src/index.test.ts` covers:

@@ -40,7 +40,10 @@ export const DEFAULT_SCAN_BUDGETS: Readonly<
   // 60–90 s budgets could not fit even 3 pages, so a 3-page scan failed. These
   // fit the free plan's 5 pages with headroom and stay far below the 15-minute
   // Queue consumer limit.
-  maxWallTimeMs: 300_000,
+  // 10 minutes: capture runs one page per Worker invocation, 20 s apart (Workers
+  // Free plan, ADR 0017), so 6 pages need ~5 minutes. A staging scan of 6 pages
+  // hit the old 300 s budget at 312 s and skipped the last page.
+  maxWallTimeMs: 600_000,
   maxBytesPerPage: 10 * 1024 * 1024, // 10 MB per page HTML/payload cap
   maxBrowserMs: 240_000,
   maxExternalLinkChecks: 50,

@@ -206,12 +206,12 @@ describe("THE-179 crawl budgets, retry classification, and browser session clean
   it("gives scans enough default wall-clock and browser time to capture a free-plan site", () => {
     // Production scan_c564687761dd38109099 needed ~35 s for 2 pages; 60 s was
     // too tight once a queue redelivery happened.
-    expect(DEFAULT_SCAN_BUDGETS.maxWallTimeMs).toBe(300_000);
+    expect(DEFAULT_SCAN_BUDGETS.maxWallTimeMs).toBe(600_000);
     expect(DEFAULT_SCAN_BUDGETS.maxBrowserMs).toBe(240_000);
     expect(
       resolveScanBudgets({ plan: "free", budgetsJson: { maxPages: 10 } })
         .maxWallTimeMs,
-    ).toBe(300_000);
+    ).toBe(600_000);
   });
 
   it("truncates HTML payloads exceeding maxBytesPerPage (>10 MB) and marks capture partial with budget_exceeded", async () => {
