@@ -145,6 +145,14 @@ const DEFAULT_KIND_CONTENT_TYPES: Readonly<
     contentType: "application/json; charset=utf-8",
     extension: "json",
   },
+  mobile_raw: {
+    contentType: "application/json; charset=utf-8",
+    extension: "json",
+  },
+  links_raw: {
+    contentType: "application/json; charset=utf-8",
+    extension: "json",
+  },
   pdf: {
     contentType: "application/pdf",
     extension: "pdf",
@@ -701,6 +709,67 @@ export async function persistPageCaptureEvidenceToR2AndD1(params: {
       });
       artifacts.push(cropArtifact);
       totalBytesWritten += cropArtifact.byteSize;
+    }
+  }
+
+  // 6c. Mobile layout audit (`mobile_raw.json`) and element crops (THE-184).
+  // Stored even when the audit failed, so the reason is evidence too.
+  const mobileLayout = capture.mobile.mobileLayout;
+  if (mobileLayout) {
+    const mobileArtifact = await writeEvidenceArtifactToR2AndD1({
+      d1,
+      r2,
+      scanId,
+      pageId,
+      kind: "mobile_raw",
+      payload: mobileLayout.artifactJson,
+      contentType: "application/json; charset=utf-8",
+      extension: "json",
+      metadata: {
+        viewport: "mobile",
+        status: mobileLayout.status,
+        durationMs: mobileLayout.durationMs,
+        ...(mobileLayout.status === "ok"
+          ? {
+              elementCrops: mobileLayout.elementCrops.length,
+              cropFailures: mobileLayout.cropFailures,
+            }
+          : { message: mobileLayout.message }),
+      },
+      nowMs,
+    });
+    artifacts.push(mobileArtifact);
+    totalBytesWritten += mobileArtifact.byteSize;
+
+    if (mobileLayout.status === "ok") {
+      for (const [index, crop] of mobileLayout.elementCrops.entries()) {
+        const cropArtifact = await writeEvidenceArtifactToR2AndD1({
+          d1,
+          r2,
+          scanId,
+          pageId,
+          kind: "screenshot_element",
+          suffix: `mobile_${index}`,
+          payload: crop.png,
+          contentType: "image/png",
+          extension: "png",
+          metadata: {
+            source: "mobile",
+            viewport: "mobile",
+            check: crop.check,
+            selector: crop.selector,
+            bbox: {
+              x: crop.box.x,
+              y: crop.box.y,
+              width: crop.box.width,
+              height: crop.box.height,
+            },
+          },
+          nowMs,
+        });
+        artifacts.push(cropArtifact);
+        totalBytesWritten += cropArtifact.byteSize;
+      }
     }
   }
 

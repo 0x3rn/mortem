@@ -24,6 +24,7 @@ import {
   requireScanWorkerBindings,
   runAccessibilityChecks,
   runPerformanceChecks,
+  runMobileChecks,
   runSecurityChecks,
   runSeoChecks,
   createPreflightHttpsRedirectProbe,
@@ -1160,6 +1161,15 @@ const worker = {
             });
             const securityMessage = `Security: ${security.pagesChecked}/${security.pagesConsidered} page(s) checked, ${security.findingsWritten} security finding(s)`;
 
+            // Mobile usability: measured during the mobile capture (THE-184).
+            const mobile = await runMobileChecks({
+              d1: ctx.d1,
+              r2: env.EVIDENCE,
+              scanId: ctx.scanId,
+              nowMs: ctx.nowMs,
+            });
+            const mobileMessage = `Mobile: ${mobile.pagesChecked}/${mobile.pagesConsidered} page(s) checked, ${mobile.findingsWritten} mobile finding(s)`;
+
             const summary = await runPerformanceChecks({
               d1: ctx.d1,
               r2: env.EVIDENCE,
@@ -1207,9 +1217,17 @@ const worker = {
                 seo.pagesAnalyzed +
                 accessibility.viewportsAudited +
                 security.pagesChecked +
+                mobile.pagesChecked +
                 summary.resultsOk,
-              message: `${seoMessage}; ${a11yMessage}; ${securityMessage}; ${psiMessage}`,
+              message: `${seoMessage}; ${a11yMessage}; ${securityMessage}; ${mobileMessage}; ${psiMessage}`,
               metadata: {
+                mobile: {
+                  pagesConsidered: mobile.pagesConsidered,
+                  pagesChecked: mobile.pagesChecked,
+                  pagesSkipped: mobile.pagesSkipped,
+                  findingsWritten: mobile.findingsWritten,
+                  rulesFired: mobile.rulesFired,
+                },
                 security: {
                   pagesConsidered: security.pagesConsidered,
                   pagesChecked: security.pagesChecked,

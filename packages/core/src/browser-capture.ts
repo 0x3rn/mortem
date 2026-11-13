@@ -1,4 +1,5 @@
 import { runAxeInPage, type AxeCaptureResult } from "./axe-runner";
+import { runMobileAuditInPage, type MobileAuditResult } from "./mobile-audit";
 import {
   parseSetCookieHeaders,
   type CapturedInsecureRequest,
@@ -108,6 +109,8 @@ export interface ViewportCaptureEvidence {
   accessibility?: AxeCaptureResult;
   /** TLS, Set-Cookie flags and insecure requests of the document (THE-183). */
   security?: DocumentSecurityEvidence;
+  /** Mobile layout audit (THE-184); mobile viewport only, not on bot challenges. */
+  mobileLayout?: MobileAuditResult;
 }
 
 export interface DualViewportPageCaptureResult {
@@ -871,6 +874,16 @@ export async function captureSingleViewportInIsolatedContext(params: {
           timeoutMs: params.axeTimeoutMs,
         });
 
+    // Mobile layout audit (THE-184): phone viewport only, never on a challenge screen.
+    const mobileLayout =
+      params.viewportName === "mobile" && !botChallenge.blocked
+        ? await runMobileAuditInPage({
+            page,
+            pageUrl: finalUrl,
+            now: params.now,
+          })
+        : undefined;
+
     const captureStatus: ViewportCaptureEvidence["captureStatus"] =
       botChallenge.blocked
         ? "blocked"
@@ -909,6 +922,7 @@ export async function captureSingleViewportInIsolatedContext(params: {
       botChallenge,
       captureStatus,
       ...(accessibility ? { accessibility } : {}),
+      ...(mobileLayout ? { mobileLayout } : {}),
       security,
     };
   } finally {

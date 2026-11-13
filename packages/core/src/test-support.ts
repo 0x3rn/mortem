@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import type { AxeCaptureResult } from "./axe-runner";
 import type { DualViewportPageCaptureResult } from "./browser-capture";
 import type { DocumentSecurityEvidence } from "./security-checks";
+import type { MobileAuditResult } from "./mobile-audit";
 import type {
   D1BoundStatementLike,
   D1DatabaseLike,
@@ -28,6 +29,7 @@ export const MIGRATION_FILES = {
   intake: "0003_intake_rate_limits.sql",
   performance: "0004_page_performance_results.sql",
   discoverySources: "0005_page_discovery_sources.sql",
+  evidenceKinds: "0006_evidence_kinds_mobile_links.sql",
 } as const;
 
 export interface SqliteD1 extends D1DatabaseLike {
@@ -43,6 +45,7 @@ export function createSqliteD1(
     MIGRATION_FILES.scans,
     MIGRATION_FILES.performance,
     MIGRATION_FILES.discoverySources,
+    MIGRATION_FILES.evidenceKinds,
   ],
   options: { withBatch?: boolean } = {},
 ): SqliteD1 {
@@ -163,6 +166,8 @@ export function buildCaptureResult(params: {
   security?: DocumentSecurityEvidence;
   /** Desktop console entries (e.g. Chrome mixed-content messages). */
   consoleTexts?: string[];
+  /** Mobile layout audit result (THE-184). */
+  mobileLayout?: MobileAuditResult;
 }): DualViewportPageCaptureResult {
   const finalUrl = params.finalUrl ?? params.url;
   const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -204,6 +209,9 @@ export function buildCaptureResult(params: {
       : {}),
     ...(params.security && name === "desktop"
       ? { security: params.security }
+      : {}),
+    ...(params.mobileLayout && name === "mobile"
+      ? { mobileLayout: params.mobileLayout }
       : {}),
   });
   return {

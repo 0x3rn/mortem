@@ -55,6 +55,13 @@ const MIGRATION_0004_SQL = readFileSync(
   ),
   "utf8",
 );
+const MIGRATION_0006_SQL = readFileSync(
+  join(
+    __dirname,
+    "../../../packages/core/migrations/0006_evidence_kinds_mobile_links.sql",
+  ),
+  "utf8",
+);
 const MIGRATION_0005_SQL = readFileSync(
   join(
     __dirname,
@@ -84,6 +91,7 @@ function createSqliteD1(): SqliteD1WithHandle {
   sqlite.exec(MIGRATION_0003_SQL);
   sqlite.exec(MIGRATION_0004_SQL);
   sqlite.exec(MIGRATION_0005_SQL);
+  sqlite.exec(MIGRATION_0006_SQL);
 
   function createBound(
     query: string,
@@ -1175,8 +1183,15 @@ describe("@mortem/scan-worker handlers", () => {
 
     const artifacts = await listScanEvidenceArtifactsInD1(d1, scanId);
     // 4 pages * 6 core artifacts (html, headers, screenshot_desktop, screenshot_mobile, network_log, console_log) = 24,
-    // plus one axe_raw per viewport per page (THE-182) = 8.
-    expect(artifacts).toHaveLength(32);
+    // plus one axe_raw per viewport per page (THE-182) = 8,
+    // plus one mobile_raw per page (THE-184) = 4. This fake page cannot run the
+    // audit script, so each mobile_raw records the failure reason.
+    expect(artifacts).toHaveLength(36);
+    expect(
+      artifacts
+        .filter((a) => a.kind === "mobile_raw")
+        .map((a) => a.metadata.status),
+    ).toEqual(["error", "error", "error", "error"]);
     const axeArtifacts = artifacts.filter((a) => a.kind === "axe_raw");
     expect(axeArtifacts).toHaveLength(8);
     // This test's stub browser cannot execute axe, so each result honestly records an error.

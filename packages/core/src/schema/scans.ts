@@ -78,6 +78,10 @@ export const EVIDENCE_ARTIFACT_KINDS = [
   "psi_raw",
   "axe_raw",
   "pdf",
+  /** In-browser mobile layout audit (THE-184, migration 0006). */
+  "mobile_raw",
+  /** Reserved for link and asset checks (THE-185, migration 0006). */
+  "links_raw",
 ] as const;
 
 export type EvidenceArtifactKind = (typeof EVIDENCE_ARTIFACT_KINDS)[number];
